@@ -8,6 +8,8 @@ class CameraStream:
 
     def __init__(self, index: int, width: int, height: int):
         self.cap = cv2.VideoCapture(index, cv2.CAP_DSHOW)  # DSHOW: abre rápido no Windows
+        # MJPG destrava fps em resoluções altas (YUY2 satura o USB em 1080p+)
+        self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
         self._frame = None

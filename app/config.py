@@ -7,8 +7,9 @@ class Config:
     # o descarte fica sem câmera até chegar a segunda
     discard_cam_index: int = 1
     hand_cam_index: int = 0
-    frame_width: int = 1280
-    frame_height: int = 720
+    frame_width: int = 1920
+    frame_height: int = 1080
+    detect_imgsz: int = 1280  # resolução da inferência (cantos são pequenos)
     model_path: str = "models/cards.pt"
     min_confidence: float = 0.75
     confirm_confidence: float = 0.85

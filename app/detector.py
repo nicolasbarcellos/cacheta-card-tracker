@@ -81,14 +81,16 @@ def draw_boxes(frame, detections: list[Detection]):
 
 
 class CardDetector:
-    def __init__(self, model_path: str, min_confidence: float):
+    def __init__(self, model_path: str, min_confidence: float,
+                 imgsz: int = 640):
         from ultralytics import YOLO  # import tardio: pesado
         self.model = YOLO(model_path)
         self.min_confidence = min_confidence
+        self.imgsz = imgsz
 
     def detect(self, frame) -> list[Detection]:
         results = self.model.predict(frame, conf=self.min_confidence,
-                                     verbose=False)
+                                     imgsz=self.imgsz, verbose=False)
         detections = []
         for box in results[0].boxes:
             label = self.model.names[int(box.cls)]

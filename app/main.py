@@ -62,7 +62,8 @@ def main():
         "hand": CameraStream(config.hand_cam_index,
                              config.frame_width, config.frame_height),
     }
-    detector = CardDetector(config.model_path, config.min_confidence)
+    detector = CardDetector(config.model_path, config.min_confidence,
+                            imgsz=config.detect_imgsz)
 
     def reset_filters():
         filters["discard"].reset()
