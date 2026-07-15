@@ -80,3 +80,53 @@ class GameTracker:
         self._top_discard = card
         self._discard_history.add(card)
         self._emit("discard", card, confidence=confidence)
+
+    def correct_event(self, event_id: int, card: Card) -> bool:
+        event = next((e for e in self.events if e.id == event_id), None)
+        if event is None:
+            return False
+        if event.type == "discard":
+            self._discard_history.discard(event.card)
+            self._discard_history.add(card)
+            if self._top_discard == event.card:
+                self._top_discard = card
+        event.card = card
+        event.confirmed = True
+        self.on_change()
+        return True
+
+    def undo_last(self) -> bool:
+        if not self.events:
+            return False
+        event = self.events.pop()
+        if event.type == "discard":
+            self._discard_history.discard(event.card)
+            if self._top_discard == event.card:
+                self._top_discard = None
+        self.on_change()
+        return True
+
+    def new_round(self):
+        self.events.clear()
+        self._hand_ref = None
+        self._top_discard = None
+        self._discard_history.clear()
+        self.on_change()
+
+    def set_paused(self, paused: bool):
+        self.paused = paused
+        self.on_change()
+
+    def state(self) -> dict:
+        def last(type_):
+            for e in reversed(self.events):
+                if e.type == type_:
+                    return e.to_dict()
+            return None
+
+        return {
+            "draw": last("draw"),
+            "discard": last("discard"),
+            "paused": self.paused,
+            "events": [e.to_dict() for e in reversed(self.events[-20:])],
+        }
