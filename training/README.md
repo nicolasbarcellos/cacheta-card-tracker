@@ -7,3 +7,12 @@
 
 Se trocar de dataset, conferir se os nomes das classes em `data.yaml`
 são interpretáveis por `Card.from_label` (`10C`, `AS`, `qh`...).
+
+## Fine-tuning
+
+1. `python training/capture_frames.py` durante uma partida simulada
+2. Anotar no Roboflow/Label Studio (pré-anotar com o modelo atual)
+3. Mesclar com o dataset base, editar `train.py` p/ partir de `models/cards.pt`
+4. `python training/train.py` e repetir o teste ponta a ponta
+
+Meta de aceite: ≥95% descartes, ≥90% compras numa partida de teste.
