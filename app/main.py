@@ -5,7 +5,7 @@ import uvicorn
 from app.capture import CameraStream
 from app.cards import Card
 from app.config import config
-from app.detector import CardDetector, draw_boxes, hand_codes, pick_top_card
+from app.detector import CardDetector, draw_boxes, hand_instances, pick_top_card
 from app.server import create_app
 from app.stability import StabilityFilter
 from app.tracker import GameTracker
@@ -24,10 +24,10 @@ def process_frame(detections_discard, detections_hand, filters, tracker):
         tracker.on_stable_top_card(Card.from_label(stable_top),
                                    confidence=top.confidence if top else 1.0)
 
-    codes = hand_codes(detections_hand)
+    codes = hand_instances(detections_hand)
     stable_hand = filters["hand"].update(codes if codes else None)
     if stable_hand:
-        tracker.on_stable_hand(frozenset(
+        tracker.on_stable_hand_instances(tuple(
             Card.from_label(c) for c in stable_hand))
 
 

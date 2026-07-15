@@ -36,7 +36,7 @@ class GameTracker:
         self._hand_ref: frozenset[Card] | None = None
         self._top_discard: Card | None = None
         self._discard_history: set[Card] = set()
-        self.hand_view: frozenset[Card] = frozenset()
+        self.hand_view: list[Card] = []
 
     def _emit(self, type_: str, card: Card, source=None, confidence=1.0):
         event = Event(
@@ -50,12 +50,20 @@ class GameTracker:
         self.events.append(event)
         self.on_change()
 
+    def on_stable_hand_instances(self, cards: tuple[Card, ...]):
+        """Visão da mão sem unificar: cada detecção conta como uma carta."""
+        if self.paused or not cards:
+            return
+        as_list = sorted(cards, key=lambda c: (_SUIT_ORDER.index(c.suit),
+                                               RANKS.index(c.rank)))
+        if as_list != self.hand_view:
+            self.hand_view = as_list
+            self.on_change()
+        self.on_stable_hand(frozenset(cards))  # lógica de turno usa o conjunto
+
     def on_stable_hand(self, cards: frozenset[Card]):
         if self.paused or not cards:
             return
-        if cards != self.hand_view:
-            self.hand_view = cards
-            self.on_change()
         if self._hand_ref is None:
             if len(cards) == self.hand_size:
                 self._hand_ref = cards
@@ -117,7 +125,7 @@ class GameTracker:
         self._hand_ref = None
         self._top_discard = None
         self._discard_history.clear()
-        self.hand_view = frozenset()
+        self.hand_view = []
         self.on_change()
 
     def set_paused(self, paused: bool):
@@ -131,13 +139,10 @@ class GameTracker:
                     return e.to_dict()
             return None
 
-        hand = sorted(self.hand_view,
-                      key=lambda c: (_SUIT_ORDER.index(c.suit),
-                                     RANKS.index(c.rank)))
         return {
             "draw": last("draw"),
             "discard": last("discard"),
-            "hand": [c.to_dict() for c in hand],
+            "hand": [c.to_dict() for c in self.hand_view],
             "paused": self.paused,
             "events": [e.to_dict() for e in reversed(self.events[-20:])],
         }
