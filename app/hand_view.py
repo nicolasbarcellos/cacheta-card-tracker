@@ -1,54 +1,62 @@
-class HandView:
-    """Mantém a mão exibida com histerese por carta.
+from collections import Counter
 
-    - Carta entra após `appear_frames` frames consecutivos detectada.
-    - Carta sai após `absent_frames` frames consecutivos ausente, mas só
-      enquanto OUTRAS cartas continuam visíveis (fantasma expira).
+
+class HandView:
+    """Mantém a mão exibida com histerese por carta, suportando gêmeas
+    (cacheta usa 2 baralhos — pode haver duas cartas idênticas na mão).
+
+    - Contagem de um rótulo SOBE após `appear_frames` frames consecutivos
+      observando mais instâncias do que as exibidas.
+    - Contagem DESCE após `absent_frames` frames consecutivos observando
+      menos — mas só enquanto OUTRAS cartas continuam visíveis.
     - Nenhuma detecção no frame = mão fora do quadro: congela tudo.
     """
 
     def __init__(self, appear_frames: int, absent_frames: int):
         self.appear_frames = appear_frames
         self.absent_frames = absent_frames
-        self._seen: dict[str, int] = {}     # candidatos: frames consecutivos vistos
-        self._missing: dict[str, int] = {}  # na mão: frames consecutivos ausentes
-        self.cards: set[str] = set()
+        self.counts: Counter = Counter()  # exibido: código -> quantidade
+        self._grow: dict[str, int] = {}
+        self._shrink: dict[str, int] = {}
 
-    def update(self, codes: frozenset[str]) -> bool:
+    def update(self, observed: Counter) -> bool:
         """Processa um frame; retorna True se a mão exibida mudou."""
-        if not codes:
-            self._seen.clear()
-            for code in self._missing:
-                self._missing[code] = 0
+        if not observed:
+            self._grow.clear()
+            self._shrink.clear()
             return False
 
         changed = False
-        for code in codes:
-            if code in self.cards:
-                self._missing[code] = 0
+        for code in set(observed) | set(self.counts):
+            obs = observed.get(code, 0)
+            cur = self.counts.get(code, 0)
+            if obs > cur:
+                self._shrink.pop(code, None)
+                self._grow[code] = self._grow.get(code, 0) + 1
+                if self._grow[code] >= self.appear_frames:
+                    self.counts[code] = obs
+                    self._grow.pop(code)
+                    changed = True
+            elif obs < cur:
+                self._grow.pop(code, None)
+                self._shrink[code] = self._shrink.get(code, 0) + 1
+                if self._shrink[code] >= self.absent_frames:
+                    if obs:
+                        self.counts[code] = obs
+                    else:
+                        del self.counts[code]
+                    self._shrink.pop(code)
+                    changed = True
             else:
-                self._seen[code] = self._seen.get(code, 0) + 1
-                if self._seen[code] >= self.appear_frames:
-                    self.cards.add(code)
-                    self._missing[code] = 0
-                    del self._seen[code]
-                    changed = True
-
-        for code in list(self._seen):
-            if code not in codes:
-                del self._seen[code]  # quebrou a sequência: recomeça
-
-        for code in list(self.cards):
-            if code not in codes:
-                self._missing[code] = self._missing.get(code, 0) + 1
-                if self._missing[code] >= self.absent_frames:
-                    self.cards.discard(code)
-                    self._missing.pop(code, None)
-                    changed = True
-
+                self._grow.pop(code, None)
+                self._shrink.pop(code, None)
         return changed
 
+    @property
+    def cards(self) -> list[str]:
+        return [code for code, n in self.counts.items() for _ in range(n)]
+
     def reset(self):
-        self._seen.clear()
-        self._missing.clear()
-        self.cards.clear()
+        self._grow.clear()
+        self._shrink.clear()
+        self.counts.clear()

@@ -1,3 +1,4 @@
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 
 import cv2
@@ -25,6 +26,48 @@ def pick_top_card(detections: list[Detection]) -> Detection | None:
 
 def hand_codes(detections: list[Detection]) -> frozenset[str]:
     return frozenset(d.card.code for d in detections)
+
+
+def hand_card_instances(detections: list[Detection]) -> Counter:
+    """Conta quantas cartas de cada rótulo existem, pela posição dos cantos.
+
+    Cacheta usa 2 baralhos: dois cantos com o mesmo rótulo podem ser a
+    mesma carta (canto de cima + canto de baixo, relação vertical/diagonal)
+    ou duas cartas gêmeas no leque (cantos lado a lado, relação horizontal).
+    """
+    by_label: dict[str, list[tuple]] = defaultdict(list)
+    for d in detections:
+        x1, y1, x2, y2 = d.box
+        size = max(x2 - x1, y2 - y1, 1)
+        by_label[d.card.code].append(((x1 + x2) / 2, (y1 + y2) / 2, size))
+
+    counts: Counter = Counter()
+    for code, centers in by_label.items():
+        # 1) funde caixas praticamente sobrepostas (duplicata de detecção)
+        merged: list[tuple] = []
+        for cx, cy, size in centers:
+            for mx, my, msize in merged:
+                if abs(cx - mx) < msize * 0.8 and abs(cy - my) < msize * 0.8:
+                    break
+            else:
+                merged.append((cx, cy, size))
+        # 2) pares em relação mais vertical que horizontal = mesma carta
+        used = [False] * len(merged)
+        n = 0
+        for i, (ix, iy, _) in enumerate(merged):
+            if used[i]:
+                continue
+            used[i] = True
+            n += 1
+            for j in range(i + 1, len(merged)):
+                if used[j]:
+                    continue
+                jx, jy, _ = merged[j]
+                if abs(iy - jy) > abs(ix - jx):
+                    used[j] = True  # canto inferior da mesma carta
+                    break
+        counts[code] = n
+    return counts
 
 
 def draw_boxes(frame, detections: list[Detection]):
