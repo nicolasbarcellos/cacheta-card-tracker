@@ -47,6 +47,29 @@ class GameTracker:
         self.events.append(event)
         self.on_change()
 
+    def on_stable_hand(self, cards: frozenset[Card]):
+        if self.paused or not cards:
+            return
+        if self._hand_ref is None:
+            if len(cards) == self.hand_size:
+                self._hand_ref = cards
+                self.on_change()
+            return
+        new = cards - self._hand_ref
+        if len(cards) == self.hand_size + 1 and len(new) == 1:
+            (card,) = new
+            source = "monte"
+            if card in self._discard_history:
+                source = "lixo"
+                self._discard_history.discard(card)
+                if self._top_discard == card:
+                    self._top_discard = None
+            self._hand_ref = cards
+            self._emit("draw", card, source=source)
+        elif len(cards) == self.hand_size:
+            self._hand_ref = cards
+            self.on_change()
+
     def on_stable_top_card(self, card: Card, confidence: float = 1.0):
         if self.paused or card == self._top_discard:
             return
