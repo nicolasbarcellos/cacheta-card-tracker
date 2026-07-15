@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Painel — Cacheta Tracker</title>
+<style>
+  body { margin: 0; background: #1a1a2e; color: #eee;
+         font-family: Arial, sans-serif; }
+  h1 { font-size: 18px; padding: 12px 16px; margin: 0; background: #16213e; }
+  .cols { display: flex; gap: 16px; padding: 16px; }
+  .cams { flex: 2; }
+  .cams img { width: 100%; border-radius: 6px; background: #000;
+              margin-bottom: 12px; }
+  .cams .rotulo { font-size: 13px; color: #9aa; margin-bottom: 4px; }
+  .lado { flex: 1; min-width: 320px; }
+  .acoes { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+  button { background: #0f3460; color: #fff; border: 0; padding: 10px 14px;
+           border-radius: 6px; cursor: pointer; font-size: 14px; }
+  button:hover { background: #16498c; }
+  button.perigo { background: #7a1f1f; }
+  #pausar.ativo { background: #b8860b; }
+  .evento { display: flex; align-items: center; gap: 10px; padding: 8px;
+            background: #16213e; border-radius: 6px; margin-bottom: 6px; }
+  .evento.pendente { outline: 2px solid #e6b800; }  /* confiança baixa */
+  .evento img { width: 40px; }
+  .evento .info { flex: 1; font-size: 14px; }
+  .evento .tipo { font-size: 11px; color: #9aa; text-transform: uppercase; }
+  dialog { background: #16213e; color: #eee; border: 1px solid #0f3460;
+           border-radius: 8px; }
+  select { font-size: 16px; padding: 6px; margin: 4px; }
+</style>
+</head>
+<body>
+<h1>Painel — Cacheta Tracker</h1>
+<div class="cols">
+  <div class="cams">
+    <div class="rotulo">Câmera do descarte</div>
+    <img src="/stream/discard" alt="descarte">
+    <div class="rotulo">Câmera da mão</div>
+    <img src="/stream/hand" alt="mão">
+  </div>
+  <div class="lado">
+    <div class="acoes">
+      <button id="pausar">Pausar detecção</button>
+      <button id="desfazer">Desfazer último</button>
+      <button id="novarodada" class="perigo">Nova rodada</button>
+    </div>
+    <div id="eventos"></div>
+  </div>
+</div>
+
+<dialog id="corrigir">
+  <p>Corrigir carta do evento <span id="dlg-id"></span>:</p>
+  <select id="dlg-rank"></select>
+  <select id="dlg-suit">
+    <option value="S">♠ espadas</option><option value="H">♥ copas</option>
+    <option value="D">♦ ouros</option><option value="C">♣ paus</option>
+  </select>
+  <div><button id="dlg-ok">Salvar</button>
+       <button id="dlg-cancel">Cancelar</button></div>
+</dialog>
+
+<script>
+  const RANKS = ["A","2","3","4","5","6","7","8","9","10","J","Q","K"];
+  document.getElementById('dlg-rank').innerHTML =
+    RANKS.map(r => `<option>${r}</option>`).join('');
+
+  let paused = false;
+  const post = (url, body) => fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : null,
+  });
+
+  document.getElementById('desfazer').onclick = () => post('/api/undo');
+  document.getElementById('novarodada').onclick = () => {
+    if (confirm('Zerar a rodada?')) post('/api/new-round');
+  };
+  const btnPause = document.getElementById('pausar');
+  btnPause.onclick = () => post('/api/pause', { paused: !paused });
+
+  const dlg = document.getElementById('corrigir');
+  let corrigindoId = null;
+  function abrirCorrecao(id) {
+    corrigindoId = id;
+    document.getElementById('dlg-id').textContent = '#' + id;
+    dlg.showModal();
+  }
+  document.getElementById('dlg-cancel').onclick = () => dlg.close();
+  document.getElementById('dlg-ok').onclick = () => {
+    const card = document.getElementById('dlg-rank').value
+               + document.getElementById('dlg-suit').value;
+    post('/api/correct', { event_id: corrigindoId, card });
+    dlg.close();
+  };
+
+  function renderEventos(state) {
+    paused = state.paused;
+    btnPause.textContent = paused ? 'Retomar detecção' : 'Pausar detecção';
+    btnPause.classList.toggle('ativo', paused);
+    document.getElementById('eventos').innerHTML = state.events.map(e => `
+      <div class="evento ${e.confirmed ? '' : 'pendente'}">
+        <img src="/assets/cards/${e.card.asset}" alt="">
+        <div class="info">
+          <div class="tipo">${e.type === 'draw'
+            ? 'compra' + (e.source === 'lixo' ? ' (do lixo)' : ' (do monte)')
+            : 'descarte'}${e.confirmed ? '' : ' — confirmar?'}</div>
+          ${e.card.display}
+        </div>
+        <button onclick="abrirCorrecao(${e.id})">corrigir</button>
+      </div>`).join('');
+  }
+
+  function connect() {
+    const ws = new WebSocket(`ws://${location.host}/ws`);
+    ws.onmessage = (msg) => {
+      const state = JSON.parse(msg.data);
+      if (state.type !== 'state') return;
+      renderEventos(state);
+    };
+    ws.onclose = () => setTimeout(connect, 1000);
+  }
+  connect();
+</script>
+</body>
+</html>
