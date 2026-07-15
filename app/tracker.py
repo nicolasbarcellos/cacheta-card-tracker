@@ -1,4 +1,3 @@
-from collections import Counter
 from dataclasses import dataclass
 
 from app.cards import RANKS, SUITS, Card
@@ -51,23 +50,15 @@ class GameTracker:
         self.events.append(event)
         self.on_change()
 
-    def on_stable_hand_instances(self, cards: tuple[Card, ...]):
-        """Visão da mão sem unificar: cada detecção conta como uma carta.
-
-        Um conjunto que é só um pedaço da mão atual (nenhuma carta nova)
-        não substitui a exibida — é a mão se mexendo/saindo do quadro.
-        """
-        if self.paused or not cards:
+    def set_hand_display(self, cards: list[Card]):
+        """Atualiza a mão exibida (decisão de quem entra/sai é do HandView)."""
+        if self.paused:
             return
         as_list = sorted(cards, key=lambda c: (_SUIT_ORDER.index(c.suit),
                                                RANKS.index(c.rank)))
         if as_list != self.hand_view:
-            new = Counter(c.code for c in cards)
-            current = Counter(c.code for c in self.hand_view)
-            if new - current:  # tem carta que não estava na tela → mão mudou
-                self.hand_view = as_list
-                self.on_change()
-        self.on_stable_hand(frozenset(cards))  # lógica de turno usa o conjunto
+            self.hand_view = as_list
+            self.on_change()
 
     def on_stable_hand(self, cards: frozenset[Card]):
         if self.paused or not cards:

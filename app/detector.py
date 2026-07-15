@@ -27,11 +27,6 @@ def hand_codes(detections: list[Detection]) -> frozenset[str]:
     return frozenset(d.card.code for d in detections)
 
 
-def hand_instances(detections: list[Detection]) -> tuple[str, ...]:
-    """Uma entrada por detecção, sem unificar (ordenada p/ estabilidade)."""
-    return tuple(sorted(d.card.code for d in detections))
-
-
 def draw_boxes(frame, detections: list[Detection]):
     out = frame.copy()
     for d in detections:

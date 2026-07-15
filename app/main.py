@@ -5,7 +5,8 @@ import uvicorn
 from app.capture import CameraStream
 from app.cards import Card
 from app.config import config
-from app.detector import CardDetector, draw_boxes, hand_instances, pick_top_card
+from app.detector import CardDetector, draw_boxes, hand_codes, pick_top_card
+from app.hand_view import HandView
 from app.server import create_app
 from app.stability import StabilityFilter
 from app.tracker import GameTracker
@@ -16,7 +17,8 @@ def make_filters(stable_frames: int):
             "hand": StabilityFilter(stable_frames)}
 
 
-def process_frame(detections_discard, detections_hand, filters, tracker):
+def process_frame(detections_discard, detections_hand, filters, tracker,
+                  hand_view):
     """Um passo do laço de visão. Puro: recebe detecções, atualiza o tracker."""
     top = pick_top_card(detections_discard)
     stable_top = filters["discard"].update(top.card.code if top else None)
@@ -24,14 +26,17 @@ def process_frame(detections_discard, detections_hand, filters, tracker):
         tracker.on_stable_top_card(Card.from_label(stable_top),
                                    confidence=top.confidence if top else 1.0)
 
-    codes = hand_instances(detections_hand)
+    codes = hand_codes(detections_hand)
+    if hand_view.update(codes):
+        tracker.set_hand_display([Card.from_label(c) for c in hand_view.cards])
     stable_hand = filters["hand"].update(codes if codes else None)
     if stable_hand:
-        tracker.on_stable_hand_instances(tuple(
+        tracker.on_stable_hand(frozenset(
             Card.from_label(c) for c in stable_hand))
 
 
-def vision_loop(cams, detector, filters, tracker, annotated, running):
+def vision_loop(cams, detector, filters, tracker, annotated, running,
+                hand_view):
     while running.is_set():
         detections = {"discard": [], "hand": []}
         for name in detections:
@@ -42,12 +47,13 @@ def vision_loop(cams, detector, filters, tracker, annotated, running):
             detections[name] = dets
             annotated[name] = draw_boxes(frame, dets)
         process_frame(detections["discard"], detections["hand"],
-                      filters, tracker)
+                      filters, tracker, hand_view)
 
 
 def main():
     tracker = GameTracker(hand_size=config.hand_size)
     filters = make_filters(config.stable_frames)
+    hand_view = HandView(config.stable_frames, config.hand_absent_frames)
     annotated: dict = {}
     cams = {
         "discard": CameraStream(config.discard_cam_index,
@@ -60,6 +66,7 @@ def main():
     def reset_filters():
         filters["discard"].reset()
         filters["hand"].reset()
+        hand_view.reset()
 
     app = create_app(tracker, annotated_frames=annotated,
                      on_new_round=reset_filters)
@@ -68,7 +75,8 @@ def main():
     running.set()
     thread = threading.Thread(
         target=vision_loop,
-        args=(cams, detector, filters, tracker, annotated, running),
+        args=(cams, detector, filters, tracker, annotated, running,
+              hand_view),
         daemon=True)
     thread.start()
 
