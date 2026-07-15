@@ -62,6 +62,23 @@ def test_on_change_fires_on_hand_view_update():
     assert calls == [1]
 
 
+def test_partial_subset_does_not_shrink_hand():
+    # abaixou a mão e levantou devagar: 5 das 9 visíveis não encolhem o leque
+    t = GameTracker()
+    nine = hand("AS", "2S", "3S", "4H", "5H", "6H", "7D", "8D", "9D")
+    t.on_stable_hand_instances(nine)
+    t.on_stable_hand_instances(hand("AS", "2S", "3S", "4H", "5H"))
+    assert len(t.hand_view) == 9
+
+
+def test_set_with_new_card_replaces_hand():
+    # carta nova no conjunto = mão realmente mudou (mesmo com menos cartas)
+    t = GameTracker()
+    t.on_stable_hand_instances(hand("AS", "2S", "3S"))
+    t.on_stable_hand_instances(hand("AS", "KC"))
+    assert t.hand_view == [c("AS"), c("KC")]
+
+
 def test_full_hand_instances_still_drive_turn_logic():
     # a lógica de turno (compra) continua funcionando via instâncias
     t = GameTracker()
