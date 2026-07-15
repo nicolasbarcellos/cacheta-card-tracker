@@ -1,7 +1,9 @@
 from dataclasses import dataclass
 
-from app.cards import Card
+from app.cards import RANKS, SUITS, Card
 from app.config import config
+
+_SUIT_ORDER = list(SUITS)
 
 
 @dataclass
@@ -34,6 +36,7 @@ class GameTracker:
         self._hand_ref: frozenset[Card] | None = None
         self._top_discard: Card | None = None
         self._discard_history: set[Card] = set()
+        self.hand_view: frozenset[Card] = frozenset()
 
     def _emit(self, type_: str, card: Card, source=None, confidence=1.0):
         event = Event(
@@ -50,6 +53,9 @@ class GameTracker:
     def on_stable_hand(self, cards: frozenset[Card]):
         if self.paused or not cards:
             return
+        if cards != self.hand_view:
+            self.hand_view = cards
+            self.on_change()
         if self._hand_ref is None:
             if len(cards) == self.hand_size:
                 self._hand_ref = cards
@@ -111,6 +117,7 @@ class GameTracker:
         self._hand_ref = None
         self._top_discard = None
         self._discard_history.clear()
+        self.hand_view = frozenset()
         self.on_change()
 
     def set_paused(self, paused: bool):
@@ -124,9 +131,13 @@ class GameTracker:
                     return e.to_dict()
             return None
 
+        hand = sorted(self.hand_view,
+                      key=lambda c: (_SUIT_ORDER.index(c.suit),
+                                     RANKS.index(c.rank)))
         return {
             "draw": last("draw"),
             "discard": last("discard"),
+            "hand": [c.to_dict() for c in hand],
             "paused": self.paused,
             "events": [e.to_dict() for e in reversed(self.events[-20:])],
         }

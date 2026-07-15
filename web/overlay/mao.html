@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Overlay — Mão</title>
+<style>
+  /* fundo transparente para o OBS Browser Source */
+  body { margin: 0; background: transparent; overflow: hidden; }
+  #mao {
+    display: flex; justify-content: center; align-items: flex-end;
+    height: 240px; padding: 10px 30px;
+  }
+  .carta {
+    width: 130px; margin: 0 -28px;  /* sobreposição de leque */
+    transform-origin: bottom center;
+    filter: drop-shadow(0 4px 10px rgba(0,0,0,.6));
+    transition: transform .3s ease, opacity .3s ease;
+    animation: entrada .35s ease-out;
+  }
+  @keyframes entrada {
+    from { transform: translateY(40px); opacity: 0; }
+    to   { opacity: 1; }
+  }
+</style>
+</head>
+<body>
+<div id="mao"></div>
+<script>
+  let shown = '';
+
+  function render(hand) {
+    const key = hand.map(c => c.code).join(',');
+    if (key === shown) return;
+    shown = key;
+    const el = document.getElementById('mao');
+    const n = hand.length;
+    el.innerHTML = hand.map((c, i) => {
+      // leque: rotação de -14° a +14° distribuída entre as cartas
+      const ang = n > 1 ? (-14 + (28 * i) / (n - 1)) : 0;
+      const lift = n > 1 ? Math.abs(i - (n - 1) / 2) * 6 : 0;
+      return `<img class="carta" src="/assets/cards/${c.asset}" alt="${c.display}"
+                   style="transform: rotate(${ang}deg) translateY(${lift}px)">`;
+    }).join('');
+  }
+
+  function connect() {
+    const ws = new WebSocket(`ws://${location.host}/ws`);
+    ws.onmessage = (msg) => {
+      const state = JSON.parse(msg.data);
+      if (state.type !== 'state') return;
+      render(state.hand || []);
+    };
+    ws.onclose = () => setTimeout(connect, 1000);
+  }
+  connect();
+</script>
+</body>
+</html>

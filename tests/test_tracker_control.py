@@ -70,4 +70,5 @@ def test_state_shape():
 
 def test_state_empty():
     s = GameTracker().state()
-    assert s == {"draw": None, "discard": None, "paused": False, "events": []}
+    assert s == {"draw": None, "discard": None, "hand": [],
+                 "paused": False, "events": []}

@@ -64,6 +64,10 @@ def create_app(tracker: GameTracker,
     async def overlay():
         return FileResponse(ROOT / "web" / "overlay" / "index.html")
 
+    @app.get("/overlay/mao")
+    async def overlay_mao():
+        return FileResponse(ROOT / "web" / "overlay" / "mao.html")
+
     @app.get("/painel")
     async def painel():
         return FileResponse(ROOT / "web" / "painel" / "index.html")

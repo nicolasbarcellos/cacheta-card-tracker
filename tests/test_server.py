@@ -15,7 +15,7 @@ def test_state_endpoint():
     tracker, client = make_client()
     resp = client.get("/api/state")
     assert resp.status_code == 200
-    assert resp.json() == {"draw": None, "discard": None,
+    assert resp.json() == {"draw": None, "discard": None, "hand": [],
                            "paused": False, "events": []}
 
 
