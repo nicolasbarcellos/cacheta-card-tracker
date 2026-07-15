@@ -113,6 +113,13 @@
 
   function connect() {
     const ws = new WebSocket(`ws://${location.host}/ws`);
+    ws.onopen = () => {
+      // servidor (re)conectou: recarrega os previews MJPEG, que não se
+      // reconectam sozinhos após um restart
+      document.querySelectorAll('.cams img').forEach((img) => {
+        img.src = img.src.split('?')[0] + '?t=' + Date.now();
+      });
+    };
     ws.onmessage = (msg) => {
       const state = JSON.parse(msg.data);
       if (state.type !== 'state') return;
