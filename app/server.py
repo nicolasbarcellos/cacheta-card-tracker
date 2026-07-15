@@ -103,11 +103,13 @@ def create_app(tracker: GameTracker,
     async def ws_endpoint(ws: WebSocket):
         await ws.accept()
         clients.add(ws)
-        await ws.send_json({"type": "state", **tracker.state()})
         try:
+            await ws.send_json({"type": "state", **tracker.state()})
             while True:
                 await ws.receive_text()  # mantém a conexão viva
         except WebSocketDisconnect:
+            pass
+        finally:
             clients.discard(ws)
 
     @app.get("/stream/{cam}")
