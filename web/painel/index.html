@@ -28,6 +28,10 @@
   dialog { background: #16213e; color: #eee; border: 1px solid #0f3460;
            border-radius: 8px; }
   select { font-size: 16px; padding: 6px; margin: 4px; }
+  .lado .rotulo { font-size: 13px; color: #9aa; margin: 8px 0 4px; }
+  #mao-atual { display: flex; flex-wrap: wrap; gap: 4px; min-height: 62px;
+               background: #16213e; border-radius: 6px; padding: 6px; }
+  #mao-atual img { width: 42px; border-radius: 3px; }
 </style>
 </head>
 <body>
@@ -45,6 +49,9 @@
       <button id="desfazer">Desfazer último</button>
       <button id="novarodada" class="perigo">Nova rodada</button>
     </div>
+    <div class="rotulo">Mão atual (<span id="mao-count">0</span> cartas)</div>
+    <div id="mao-atual"></div>
+    <div class="rotulo">Eventos</div>
     <div id="eventos"></div>
   </div>
 </div>
@@ -98,6 +105,10 @@
     paused = state.paused;
     btnPause.textContent = paused ? 'Retomar detecção' : 'Pausar detecção';
     btnPause.classList.toggle('ativo', paused);
+    const hand = state.hand || [];
+    document.getElementById('mao-count').textContent = hand.length;
+    document.getElementById('mao-atual').innerHTML = hand.map(c =>
+      `<img src="/assets/cards/${c.asset}" title="${c.display}">`).join('');
     document.getElementById('eventos').innerHTML = state.events.map(e => `
       <div class="evento ${e.confirmed ? '' : 'pendente'}">
         <img src="/assets/cards/${e.card.asset}" alt="">
