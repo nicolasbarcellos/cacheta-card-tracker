@@ -60,6 +60,7 @@
     const ws = new WebSocket(`ws://${location.host}/ws`);
     ws.onmessage = (msg) => {
       const state = JSON.parse(msg.data);
+      if (state.type !== 'state') return;
       render('draw', state.draw);
       render('discard', state.discard);
     };
