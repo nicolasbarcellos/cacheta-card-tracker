@@ -122,11 +122,14 @@
       </div>`).join('');
   }
 
+  let reconectando = false;
   function connect() {
     const ws = new WebSocket(`ws://${location.host}/ws`);
     ws.onopen = () => {
-      // servidor (re)conectou: recarrega os previews MJPEG, que não se
-      // reconectam sozinhos após um restart
+      // só em RE-conexão (restart do servidor): recarrega os previews MJPEG,
+      // que não voltam sozinhos. Na 1ª conexão não, senão duplica streams.
+      if (!reconectando) return;
+      reconectando = false;
       document.querySelectorAll('.cams img').forEach((img) => {
         img.src = img.src.split('?')[0] + '?t=' + Date.now();
       });
@@ -136,7 +139,7 @@
       if (state.type !== 'state') return;
       renderEventos(state);
     };
-    ws.onclose = () => setTimeout(connect, 1000);
+    ws.onclose = () => { reconectando = true; setTimeout(connect, 1000); };
   }
   connect();
 </script>

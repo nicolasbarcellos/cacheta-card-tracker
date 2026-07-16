@@ -116,17 +116,35 @@ def create_app(tracker: GameTracker,
         finally:
             clients.discard(ws)
 
+    preview_cache: dict[str, tuple[float, bytes]] = {}
+
+    def _encode_preview(cam: str) -> bytes | None:
+        frame = annotated_frames.get(cam)
+        if frame is None:
+            return None
+        h, w = frame.shape[:2]
+        if w > 960:  # preview não precisa da resolução da detecção
+            frame = cv2.resize(frame, (960, int(h * 960 / w)))
+        ok, jpg = cv2.imencode(".jpg", frame,
+                               [cv2.IMWRITE_JPEG_QUALITY, 75])
+        return jpg.tobytes() if ok else None
+
     @app.get("/stream/{cam}")
     async def stream(cam: str):
         async def frames():
             while True:
-                frame = annotated_frames.get(cam)
-                if frame is not None:
-                    ok, jpg = cv2.imencode(".jpg", frame)
-                    if ok:
-                        yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n"
-                               + jpg.tobytes() + b"\r\n")
-                await asyncio.sleep(0.1)  # ~10 fps é suficiente p/ preview
+                # cache compartilhado entre abas; encode fora do event loop
+                cached = preview_cache.get(cam)
+                now = asyncio.get_event_loop().time()
+                if cached is None or now - cached[0] > 0.12:
+                    data = await asyncio.to_thread(_encode_preview, cam)
+                    if data:
+                        preview_cache[cam] = (now, data)
+                        cached = preview_cache[cam]
+                if cached:
+                    yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n"
+                           + cached[1] + b"\r\n")
+                await asyncio.sleep(0.12)
         return StreamingResponse(
             frames(), media_type="multipart/x-mixed-replace; boundary=frame")
 
