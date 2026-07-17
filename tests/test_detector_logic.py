@@ -8,8 +8,8 @@ def det(code, conf):
                      box=(0, 0, 10, 10))
 
 
-def det_at(code, x, y, size=20):
-    return Detection(card=Card.from_label(code), confidence=0.9,
+def det_at(code, x, y, size=20, conf=0.9):
+    return Detection(card=Card.from_label(code), confidence=conf,
                      box=(x, y, x + size, y + size))
 
 
@@ -53,3 +53,21 @@ def test_instances_single_detection_is_one():
 def test_instances_different_labels_independent():
     dets = [det_at("7H", 100, 100), det_at("7D", 200, 100)]
     assert hand_card_instances(dets) == {"7H": 1, "7D": 1}
+
+
+def test_vertical_pair_with_wrong_label_keeps_top():
+    # canto de baixo (invertido) lido errado: A em cima, "4" embaixo
+    dets = [det_at("AS", 100, 100), det_at("4S", 115, 280)]
+    assert hand_card_instances(dets) == {"AS": 1}
+
+
+def test_overlapping_different_labels_higher_confidence_wins():
+    # mesmo canto com dois palpites: A (0.9) e 4 (0.6)
+    dets = [det_at("AS", 100, 100, conf=0.9), det_at("4S", 103, 102, conf=0.6)]
+    assert hand_card_instances(dets) == {"AS": 1}
+
+
+def test_far_apart_boxes_not_paired_vertically():
+    # verticais mas longe demais para serem a mesma carta (outra fileira)
+    dets = [det_at("AS", 100, 100), det_at("4S", 110, 900)]
+    assert hand_card_instances(dets) == {"AS": 1, "4S": 1}

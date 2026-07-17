@@ -5,13 +5,14 @@ from app.main import make_filters, process_frame
 from app.tracker import GameTracker
 
 
-def det(code, conf=0.9):
+def det(code, conf=0.9, x=0):
+    # caixas espalhadas na horizontal como um leque real (sobrepostas fundem)
     return Detection(card=Card.from_label(code), confidence=conf,
-                     box=(0, 0, 10, 10))
+                     box=(x, 0, x + 10, 10))
 
 
 def hand(*codes):
-    return [det(c) for c in codes]
+    return [det(c, x=i * 100) for i, c in enumerate(codes)]
 
 HAND9 = ["AS", "2S", "3S", "4H", "5H", "6H", "7D", "8D", "9D"]
 

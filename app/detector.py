@@ -1,4 +1,4 @@
-from collections import Counter, defaultdict
+from collections import Counter
 from dataclasses import dataclass
 
 import cv2
@@ -29,45 +29,52 @@ def hand_codes(detections: list[Detection]) -> frozenset[str]:
 
 
 def hand_card_instances(detections: list[Detection]) -> Counter:
-    """Conta quantas cartas de cada rótulo existem, pela posição dos cantos.
+    """Conta as cartas da mão lendo APENAS o canto superior de cada uma.
 
-    Cacheta usa 2 baralhos: dois cantos com o mesmo rótulo podem ser a
-    mesma carta (canto de cima + canto de baixo, relação vertical/diagonal)
-    ou duas cartas gêmeas no leque (cantos lado a lado, relação horizontal).
+    O canto inferior fica de cabeça para baixo e o modelo o lê mal
+    (A vira 4 etc.), então:
+    1. cantos praticamente sobrepostos = dois palpites para o mesmo canto
+       → fica o de maior confiança;
+    2. dois cantos em relação vertical (um sobre o outro, à distância de
+       uma carta) = canto de cima + canto de baixo da MESMA carta, ainda
+       que os rótulos lidos sejam diferentes → fica só o de CIMA.
+    Gêmeas dos 2 baralhos sobrevivem: no leque ficam lado a lado.
     """
-    by_label: dict[str, list[tuple]] = defaultdict(list)
+    boxes = []
     for d in detections:
         x1, y1, x2, y2 = d.box
         size = max(x2 - x1, y2 - y1, 1)
-        by_label[d.card.code].append(((x1 + x2) / 2, (y1 + y2) / 2, size))
+        boxes.append((d.card.code, (x1 + x2) / 2, (y1 + y2) / 2, size,
+                      d.confidence))
 
-    counts: Counter = Counter()
-    for code, centers in by_label.items():
-        # 1) funde caixas praticamente sobrepostas (duplicata de detecção)
-        merged: list[tuple] = []
-        for cx, cy, size in centers:
-            for mx, my, msize in merged:
-                if abs(cx - mx) < msize * 0.8 and abs(cy - my) < msize * 0.8:
-                    break
-            else:
-                merged.append((cx, cy, size))
-        # 2) pares em relação mais vertical que horizontal = mesma carta
-        used = [False] * len(merged)
-        n = 0
-        for i, (ix, iy, _) in enumerate(merged):
-            if used[i]:
+    # 1) sobrepostas (mesmo canto, qualquer rótulo): maior confiança vence
+    boxes.sort(key=lambda b: -b[4])
+    kept: list[tuple] = []
+    for code, cx, cy, size, conf in boxes:
+        for _, kx, ky, ksize, _ in kept:
+            if abs(cx - kx) < ksize * 0.8 and abs(cy - ky) < ksize * 0.8:
+                break
+        else:
+            kept.append((code, cx, cy, size, conf))
+
+    # 2) relação vertical dentro do alcance de uma carta: descarta o de baixo
+    dropped = set()
+    for i in range(len(kept)):
+        if i in dropped:
+            continue
+        _, ix, iy, isize, _ = kept[i]
+        for j in range(i + 1, len(kept)):
+            if j in dropped:
                 continue
-            used[i] = True
-            n += 1
-            for j in range(i + 1, len(merged)):
-                if used[j]:
-                    continue
-                jx, jy, _ = merged[j]
-                if abs(iy - jy) > abs(ix - jx):
-                    used[j] = True  # canto inferior da mesma carta
+            _, jx, jy, jsize, _ = kept[j]
+            dx, dy = abs(ix - jx), abs(iy - jy)
+            reach = 12 * max(isize, jsize)  # ~diagonal de uma carta
+            if dy > dx and (dx * dx + dy * dy) ** 0.5 < reach:
+                dropped.add(j if jy > iy else i)
+                if i in dropped:
                     break
-        counts[code] = n
-    return counts
+
+    return Counter(kept[i][0] for i in range(len(kept)) if i not in dropped)
 
 
 def draw_boxes(frame, detections: list[Detection]):
@@ -89,8 +96,11 @@ class CardDetector:
         self.imgsz = imgsz
 
     def detect(self, frame) -> list[Detection]:
+        # agnostic_nms: dois palpites sobrepostos de classes diferentes
+        # (mesmo canto lido como A e como 4) viram um só, o mais confiante
         results = self.model.predict(frame, conf=self.min_confidence,
-                                     imgsz=self.imgsz, verbose=False)
+                                     imgsz=self.imgsz, agnostic_nms=True,
+                                     verbose=False)
         detections = []
         for box in results[0].boxes:
             label = self.model.names[int(box.cls)]
