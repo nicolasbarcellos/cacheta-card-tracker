@@ -19,52 +19,58 @@ SYNTH = ROOT / "datasets" / "synthetic"
 TRAINSET = ROOT / "datasets" / "fans-split"
 MODEL = Path("models/cards.pt")
 
-kept = sorted((SYNTH / "images").glob("*.jpg"))
-if len(kept) < 200:
-    sys.exit(f"só {len(kept)} imagens em {SYNTH} — rode generate_fans.py")
 
-random.seed(42)
-random.shuffle(kept)
-n_val = max(50, len(kept) // 10)
-splits = {"val": kept[:n_val], "train": kept[n_val:]}
+def main():
+    kept = sorted((SYNTH / "images").glob("*.jpg"))
+    if len(kept) < 200:
+        sys.exit(f"só {len(kept)} imagens em {SYNTH} — rode generate_fans.py")
 
-if TRAINSET.exists():
-    shutil.rmtree(TRAINSET)
-for split, files in splits.items():
-    (TRAINSET / "images" / split).mkdir(parents=True)
-    (TRAINSET / "labels" / split).mkdir(parents=True)
-    for img in files:
-        shutil.copy(img, TRAINSET / "images" / split / img.name)
-        label = SYNTH / "labels" / f"{img.stem}.txt"
-        shutil.copy(label, TRAINSET / "labels" / split / label.name)
+    random.seed(42)
+    random.shuffle(kept)
+    n_val = max(50, len(kept) // 10)
+    splits = {"val": kept[:n_val], "train": kept[n_val:]}
 
-names = YOLO(str(MODEL)).names
-yaml = [f"path: {TRAINSET.resolve().as_posix()}",
-        "train: images/train", "val: images/val", "names:"]
-yaml += [f"  {i}: {name}" for i, name in names.items()]
-(TRAINSET / "data.yaml").write_text("\n".join(yaml))
-print(f"{len(splits['train'])} treino / {len(splits['val'])} validação")
+    if TRAINSET.exists():
+        shutil.rmtree(TRAINSET)
+    for split, files in splits.items():
+        (TRAINSET / "images" / split).mkdir(parents=True)
+        (TRAINSET / "labels" / split).mkdir(parents=True)
+        for img in files:
+            shutil.copy(img, TRAINSET / "images" / split / img.name)
+            label = SYNTH / "labels" / f"{img.stem}.txt"
+            shutil.copy(label, TRAINSET / "labels" / split / label.name)
 
-# backup do modelo atual antes de sobrescrever
-n = 1
-while (backup := MODEL.with_name(f"cards_backup_{n}.pt")).exists():
-    n += 1
-shutil.copy(MODEL, backup)
-print(f"backup: {backup}")
+    names = YOLO(str(MODEL)).names
+    yaml = [f"path: {TRAINSET.resolve().as_posix()}",
+            "train: images/train", "val: images/val", "names:"]
+    yaml += [f"  {i}: {name}" for i, name in names.items()]
+    (TRAINSET / "data.yaml").write_text("\n".join(yaml))
+    print(f"{len(splits['train'])} treino / {len(splits['val'])} validação")
 
-model = YOLO(str(MODEL))
-model.train(
-    data=str(TRAINSET / "data.yaml"),
-    epochs=20,
-    imgsz=960,        # cantos são pequenos: resolução maior ajuda
-    lr0=0.0005,       # lr baixo: ajuste fino, não treino do zero
-    batch=8,
-    project=str(ROOT / "runs"),
-    name="finetune-fans",
-    exist_ok=True,
-)
+    # backup do modelo atual antes de sobrescrever
+    n = 1
+    while (backup := MODEL.with_name(f"cards_backup_{n}.pt")).exists():
+        n += 1
+    shutil.copy(MODEL, backup)
+    print(f"backup: {backup}")
 
-best = ROOT / "runs" / "finetune-fans" / "weights" / "best.pt"
-shutil.copy(best, MODEL)
-print(f"\nnovo modelo publicado em {MODEL}")
-print(f"se piorar, volte com: copy {backup} {MODEL}")
+    model = YOLO(str(MODEL))
+    model.train(
+        data=str(TRAINSET / "data.yaml"),
+        epochs=20,
+        imgsz=960,        # cantos são pequenos: resolução maior ajuda
+        lr0=0.0005,       # lr baixo: ajuste fino, não treino do zero
+        batch=8,
+        project=str(ROOT / "runs"),
+        name="finetune-fans",
+        exist_ok=True,
+    )
+
+    best = ROOT / "runs" / "finetune-fans" / "weights" / "best.pt"
+    shutil.copy(best, MODEL)
+    print(f"\nnovo modelo publicado em {MODEL}")
+    print(f"se piorar, volte com: copy {backup} {MODEL}")
+
+
+if __name__ == "__main__":
+    main()
