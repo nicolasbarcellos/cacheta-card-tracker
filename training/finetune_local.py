@@ -1,9 +1,8 @@
-"""Fine-tuning local: re-treina models/cards.pt só com as suas fotos.
+"""Fine-tuning local: re-treina models/cards.pt com os leques sintéticos.
 
-Usa os frames de training/datasets/local/ que sobreviveram à revisão
-(review/), separa treino/validação, monta o data.yaml com as classes na
-ordem do modelo e treina POUCAS épocas com lr baixo a partir dos pesos
-atuais — especializa no seu baralho sem esquecer o que já sabe.
+Consome training/datasets/synthetic/ (gerado por generate_fans.py a partir
+dos moldes do seu baralho), separa treino/validação, monta o data.yaml com
+as classes na ordem do modelo e treina a partir dos pesos atuais.
 
 O modelo antigo fica salvo em models/cards_backup_N.pt.
 """
@@ -16,20 +15,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from ultralytics import YOLO  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent
-LOCAL = ROOT / "datasets" / "local"
-TRAINSET = ROOT / "datasets" / "local-split"
+SYNTH = ROOT / "datasets" / "synthetic"
+TRAINSET = ROOT / "datasets" / "fans-split"
 MODEL = Path("models/cards.pt")
 
-# só entram frames cuja imagem de review não foi apagada
-kept = [p for p in sorted((LOCAL / "images").glob("*.jpg"))
-        if (LOCAL / "review" / p.name).exists()]
-if len(kept) < 30:
-    sys.exit(f"só {len(kept)} frames aprovados — capture/anote mais "
-             "(mínimo recomendado: 30, ideal: 100+)")
+kept = sorted((SYNTH / "images").glob("*.jpg"))
+if len(kept) < 200:
+    sys.exit(f"só {len(kept)} imagens em {SYNTH} — rode generate_fans.py")
 
 random.seed(42)
 random.shuffle(kept)
-n_val = max(5, len(kept) // 6)
+n_val = max(50, len(kept) // 10)
 splits = {"val": kept[:n_val], "train": kept[n_val:]}
 
 if TRAINSET.exists():
@@ -39,7 +35,7 @@ for split, files in splits.items():
     (TRAINSET / "labels" / split).mkdir(parents=True)
     for img in files:
         shutil.copy(img, TRAINSET / "images" / split / img.name)
-        label = LOCAL / "labels" / f"{img.stem}.txt"
+        label = SYNTH / "labels" / f"{img.stem}.txt"
         shutil.copy(label, TRAINSET / "labels" / split / label.name)
 
 names = YOLO(str(MODEL)).names
@@ -64,11 +60,11 @@ model.train(
     lr0=0.0005,       # lr baixo: ajuste fino, não treino do zero
     batch=8,
     project=str(ROOT / "runs"),
-    name="finetune-local",
+    name="finetune-fans",
     exist_ok=True,
 )
 
-best = ROOT / "runs" / "finetune-local" / "weights" / "best.pt"
+best = ROOT / "runs" / "finetune-fans" / "weights" / "best.pt"
 shutil.copy(best, MODEL)
 print(f"\nnovo modelo publicado em {MODEL}")
 print(f"se piorar, volte com: copy {backup} {MODEL}")

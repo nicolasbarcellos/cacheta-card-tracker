@@ -19,7 +19,7 @@ import cv2
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from app.detector import CardDetector, draw_boxes  # noqa: E402
 
-CONF = 0.60  # pseudo-anotação: só o que o modelo tem certeza
+CONF = 0.45  # pseudo-anotação: equilíbrio entre cobertura e erro (revisão corta o resto)
 
 ROOT = Path(__file__).resolve().parent
 SRC = ROOT / "datasets" / "meu-setup"
