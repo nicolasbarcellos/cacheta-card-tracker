@@ -57,10 +57,13 @@ def main():
     model = YOLO(str(MODEL))
     model.train(
         data=str(TRAINSET / "data.yaml"),
-        epochs=20,
-        imgsz=960,        # cantos são pequenos: resolução maior ajuda
-        lr0=0.0005,       # lr baixo: ajuste fino, não treino do zero
-        batch=8,
+        epochs=12,        # menos épocas: evita fixar demais no sintético
+        imgsz=1280,       # índices de canto são pequenos: resolução alta
+        lr0=0.0003,       # lr baixo: ajuste fino
+        freeze=10,        # congela o "miolo" (backbone) — não esquece o real
+        batch=6,          # imgsz maior consome mais VRAM
+        mosaic=0.0,       # mosaico descaracteriza o layout de leque
+        scale=0.2, translate=0.05,  # augment moderado
         project=str(ROOT / "runs"),
         name="finetune-fans",
         exist_ok=True,

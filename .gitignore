@@ -6,3 +6,12 @@ training/datasets/
 training/runs/
 assets/cards/*.png
 .pytest_cache/
+
+# artefatos de debug/captura ao vivo (regeneráveis)
+*.mjpg
+training/audit_*.jpg
+training/real_*.jpg
+training/live_*.jpg
+training/debug_*.jpg
+training/check_*.jpg
+training/contact_sheet.jpg

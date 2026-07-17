@@ -1,11 +1,15 @@
-"""Gera leques sintéticos a partir dos moldes do baralho, com gabarito exato.
+"""Gera leques sintéticos REALISTAS (apertados) a partir dos moldes.
 
-Monta cenas de leque (2 a 10 cartas, maioria 9) colando os moldes de
-training/templates/ com rotação/sobreposição/iluminação variadas sobre
-fundos aleatórios (ou fotos de training/backgrounds/, se existirem).
-Como a geometria é conhecida, os cantos visíveis viram labels YOLO exatos.
+v2 — corrige o sim-to-real gap da v1:
+- leque apertado: cartas muito sobrepostas, só a listra + o índice do canto
+  superior-esquerdo aparece (como num leque de verdade); a última carta
+  mostra a face inteira.
+- rótulo = SÓ o canto superior-esquerdo visível de cada carta (+ canto
+  inferior-direito da última). Nada de rótulo em canto coberto.
+- realismo: perspectiva por carta, brilho/sombra, sombra entre cartas,
+  desfoque de movimento, granulado de câmera, fundos reais da mesa.
 
-Uso: python training/generate_fans.py [n_imagens]   (padrão: 1500)
+Uso: python training/generate_fans.py [n_imagens]   (padrão: 2000)
 Saída: training/datasets/synthetic/{images,labels}/
 """
 import random
@@ -18,131 +22,191 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from app.cards import RANKS, SUITS  # noqa: E402
 
-N_IMAGES = int(sys.argv[1]) if len(sys.argv) > 1 else 1500
+N_IMAGES = int(sys.argv[1]) if len(sys.argv) > 1 else 2000
 CANVAS_W, CANVAS_H = 1280, 720
 TPL_W, TPL_H = 250, 350
-# região do índice (valor+naipe) no molde 250x350 — ~8x18mm de uma carta 63x88
-CORNER_TL = np.array([[8, 10], [48, 10], [48, 85], [8, 85]], np.float32)
-CORNER_BR = np.array([[TPL_W - 48, TPL_H - 85], [TPL_W - 8, TPL_H - 85],
-                      [TPL_W - 8, TPL_H - 10], [TPL_W - 48, TPL_H - 10]],
+# índice (valor+naipe) do canto superior-esquerdo no molde 250x350
+CORNER_TL = np.array([[10, 12], [56, 12], [56, 96], [10, 96]], np.float32)
+CORNER_BR = np.array([[TPL_W - 56, TPL_H - 96], [TPL_W - 10, TPL_H - 96],
+                      [TPL_W - 10, TPL_H - 12], [TPL_W - 56, TPL_H - 12]],
                      np.float32)
 
 ROOT = Path(__file__).resolve().parent
 TEMPLATES = ROOT / "templates"
 BACKGROUNDS = ROOT / "backgrounds"
 OUT = ROOT / "datasets" / "synthetic"
-(OUT / "images").mkdir(parents=True, exist_ok=True)
-(OUT / "labels").mkdir(parents=True, exist_ok=True)
+
+
+def reset_out():
+    import shutil
+    if OUT.exists():
+        shutil.rmtree(OUT)
+    (OUT / "images").mkdir(parents=True)
+    (OUT / "labels").mkdir(parents=True)
+
 
 ALL_CODES = sorted(f"{r}{s}" for r in RANKS for s in SUITS)
-NAME_TO_ID = {c: i for i, c in enumerate(ALL_CODES)}  # mesma ordem do modelo
+NAME_TO_ID = {c: i for i, c in enumerate(ALL_CODES)}
 
 
 def load_templates():
-    templates = {}
+    t = {}
     for p in TEMPLATES.glob("*.png"):
         img = cv2.imread(str(p))
         if img is not None and p.stem in NAME_TO_ID:
-            templates[p.stem] = cv2.resize(img, (TPL_W, TPL_H))
-    return templates
+            t[p.stem] = cv2.resize(img, (TPL_W, TPL_H))
+    return t
 
 
-def random_background():
-    files = list(BACKGROUNDS.glob("*.jpg")) + list(BACKGROUNDS.glob("*.png"))
-    if files and random.random() < 0.8:
-        img = cv2.imread(str(random.choice(files)))
+def load_backgrounds():
+    bgs = []
+    for p in list(BACKGROUNDS.glob("*.jpg")) + list(BACKGROUNDS.glob("*.png")):
+        img = cv2.imread(str(p))
         if img is not None:
-            return cv2.resize(img, (CANVAS_W, CANVAS_H))
-    # fundo procedural: cor sólida escura com gradiente e ruído
+            bgs.append(cv2.resize(img, (CANVAS_W, CANVAS_H)))
+    return bgs
+
+
+def random_background(bgs):
+    if bgs and random.random() < 0.85:
+        bg = random.choice(bgs).astype(np.float32)
+        bg *= random.uniform(0.6, 1.15)
+        bg += np.random.uniform(-10, 10, 3)
+        return np.clip(bg, 0, 255).astype(np.uint8)
     base = np.full((CANVAS_H, CANVAS_W, 3),
-                   [random.randint(15, 90) for _ in range(3)], np.uint8)
-    grad = np.linspace(random.uniform(0.7, 1.0), random.uniform(1.0, 1.3),
-                       CANVAS_H, dtype=np.float32).reshape(-1, 1, 1)
-    noisy = np.clip(base * grad + np.random.normal(0, 6, base.shape), 0, 255)
+                   [random.randint(20, 110) for _ in range(3)], np.uint8)
+    noisy = np.clip(base + np.random.normal(0, 8, base.shape), 0, 255)
     return noisy.astype(np.uint8)
 
 
 def jitter_card(img):
     img = img.astype(np.float32)
-    img *= random.uniform(0.6, 1.25)               # brilho
-    img += np.random.uniform(-12, 12, 3)           # tom de cor
-    return np.clip(img, 0, 255).astype(np.uint8)
+    img *= random.uniform(0.65, 1.15)                 # brilho
+    img += np.random.uniform(-10, 10, 3)              # tom
+    # gradiente de iluminação (uma borda mais clara)
+    g = np.linspace(random.uniform(0.8, 1.0), random.uniform(1.0, 1.2),
+                    img.shape[1], dtype=np.float32).reshape(1, -1, 1)
+    img = np.clip(img * g, 0, 255)
+    return img.astype(np.uint8)
 
 
-def affine_for(scale, angle_deg, pivot, base_center):
-    """Molde em pé centrado em base_center, girado angle_deg em torno de pivot."""
-    place = np.array([[scale, 0, base_center[0] - TPL_W * scale / 2],
-                      [0, scale, base_center[1] - TPL_H * scale / 2],
+def perspective_matrix(scale, pivot, angle_deg):
+    """Molde em pé -> posição, com leve perspectiva e giro em torno do pivô."""
+    src = np.array([[0, 0], [TPL_W, 0], [TPL_W, TPL_H], [0, TPL_H]], np.float32)
+    warp = random.uniform(0, 0.05)
+    dst = np.array([
+        [TPL_W * random.uniform(0, warp), TPL_H * random.uniform(0, warp)],
+        [TPL_W * (1 - random.uniform(0, warp)), TPL_H * random.uniform(0, warp)],
+        [TPL_W * (1 - random.uniform(0, warp)),
+         TPL_H * (1 - random.uniform(0, warp))],
+        [TPL_W * random.uniform(0, warp),
+         TPL_H * (1 - random.uniform(0, warp))]], np.float32)
+    persp = cv2.getPerspectiveTransform(src, dst)
+    place = np.array([[scale, 0, pivot[0] - TPL_W * scale / 2],
+                      [0, scale, pivot[1] - TPL_H * scale / 2],
                       [0, 0, 1]], np.float32)
     rot = np.vstack([cv2.getRotationMatrix2D(pivot, angle_deg, 1.0),
                      [0, 0, 1]]).astype(np.float32)
-    return (rot @ place)[:2]
+    return rot @ place @ persp
 
 
-def compose_fan(templates):
-    canvas = random_background()
-    n = random.choice([2, 5, 7, 8] + [9] * 8 + [10] * 2)
+def bbox_of(corner, m):
+    pts = cv2.perspectiveTransform(corner.reshape(1, -1, 2), m)[0]
+    x1, y1 = pts.min(axis=0)
+    x2, y2 = pts.max(axis=0)
+    return float(x1), float(y1), float(x2), float(y2), pts
+
+
+def compose_fan(templates, bgs):
+    canvas = random_background(bgs).astype(np.float32)
+    n = random.choice([6, 7, 8] + [9] * 10 + [10] * 3)
     codes = random.sample(list(templates), min(n, len(templates)))
-    scale = random.uniform(0.55, 1.15)
-    spread = random.uniform(3.5, 8.0) * (len(codes) - 1)  # graus por carta
-    cx = random.uniform(CANVAS_W * 0.25, CANVAS_W * 0.75)
-    cy = random.uniform(CANVAS_H * 0.35, CANVAS_H * 0.75)
-    pivot = (cx, cy + TPL_H * scale * random.uniform(0.9, 1.6))
+    n = len(codes)
 
-    polys, corners = [], []
+    scale = random.uniform(0.55, 0.9)
+    total_spread = random.uniform(28, 52)      # graus do leque inteiro
+    step = random.uniform(0.10, 0.20) * TPL_W * scale  # passo horizontal (apertado)
+    cx = random.uniform(CANVAS_W * 0.35, CANVAS_W * 0.6)
+    cy = random.uniform(CANVAS_H * 0.5, CANVAS_H * 0.72)
+    pivot = (cx, cy + TPL_H * scale * random.uniform(0.75, 1.2))
+
+    mats = []
+    for i in range(n):
+        frac = i / max(n - 1, 1)
+        angle = -total_spread / 2 + total_spread * frac + random.uniform(-1, 1)
+        base = (cx - step * (n - 1) / 2 + step * i, cy)
+        mats.append(perspective_matrix(scale, base, -angle))
+
+    # desenha da esquerda p/ direita (as de cima cobrem as de baixo)
     for i, code in enumerate(codes):
-        angle = -spread / 2 + spread * (i / max(len(codes) - 1, 1))
-        angle += random.uniform(-1.5, 1.5)
-        m = affine_for(scale, -angle, pivot, (cx, cy))
         card = jitter_card(templates[code])
-        warped = cv2.warpAffine(card, m, (CANVAS_W, CANVAS_H))
-        mask = cv2.warpAffine(np.full((TPL_H, TPL_W), 255, np.uint8), m,
-                              (CANVAS_W, CANVAS_H))
-        canvas[mask > 127] = warped[mask > 127]
+        warped = cv2.warpPerspective(card.astype(np.float32), mats[i],
+                                     (CANVAS_W, CANVAS_H))
+        mask = cv2.warpPerspective(np.full((TPL_H, TPL_W), 255, np.uint8),
+                                   mats[i], (CANVAS_W, CANVAS_H))
+        # sombrinha da carta anterior
+        sh = cv2.GaussianBlur(mask, (21, 21), 0).astype(np.float32) / 255
+        canvas *= (1 - 0.12 * sh[..., None])
+        m3 = mask > 127
+        canvas[m3] = warped[m3]
 
-        quad = cv2.transform(np.array([[[0, 0], [TPL_W, 0], [TPL_W, TPL_H],
-                                        [0, TPL_H]]], np.float32), m)[0]
-        polys.append(quad)
-        for corner in (CORNER_TL, CORNER_BR):
-            pts = cv2.transform(corner.reshape(1, -1, 2), m)[0]
-            corners.append((i, code, pts))
-
+    # rótulos: canto TL de cada carta (visível se nenhuma carta POSTERIOR
+    # o cobre) + canto BR só da última
     labels = []
-    for owner, code, pts in corners:
-        center = tuple(pts.mean(axis=0))
-        covered = any(cv2.pointPolygonTest(polys[j].astype(np.float32),
-                                           center, False) >= 0
-                      for j in range(owner + 1, len(polys)))
-        x1, y1 = pts.min(axis=0)
-        x2, y2 = pts.max(axis=0)
-        inside = 0 <= x1 and 0 <= y1 and x2 < CANVAS_W and y2 < CANVAS_H
-        if covered or not inside:
-            continue
-        labels.append(f"{NAME_TO_ID[code]} "
-                      f"{(x1 + x2) / 2 / CANVAS_W:.6f} "
-                      f"{(y1 + y2) / 2 / CANVAS_H:.6f} "
-                      f"{(x2 - x1) / CANVAS_W:.6f} "
-                      f"{(y2 - y1) / CANVAS_H:.6f}")
+    polys = [cv2.perspectiveTransform(
+        np.array([[[0, 0], [TPL_W, 0], [TPL_W, TPL_H], [0, TPL_H]]], np.float32),
+        mats[i])[0] for i in range(n)]
 
-    if random.random() < 0.3:
-        canvas = cv2.GaussianBlur(canvas, (3, 3), 0)
+    def visible(pts, drawn_after):
+        c = tuple(pts.mean(axis=0))
+        for j in drawn_after:
+            if cv2.pointPolygonTest(polys[j].astype(np.float32), c, False) >= 0:
+                return False
+        return True
+
+    for i, code in enumerate(codes):
+        corners = [CORNER_TL] + ([CORNER_BR] if i == n - 1 else [])
+        for corner in corners:
+            x1, y1, x2, y2, pts = bbox_of(corner, mats[i])
+            if not visible(pts, range(i + 1, n)):
+                continue
+            if x1 < 0 or y1 < 0 or x2 >= CANVAS_W or y2 >= CANVAS_H:
+                continue
+            if (x2 - x1) < 8 or (y2 - y1) < 12:
+                continue
+            labels.append(f"{NAME_TO_ID[code]} "
+                          f"{(x1 + x2) / 2 / CANVAS_W:.6f} "
+                          f"{(y1 + y2) / 2 / CANVAS_H:.6f} "
+                          f"{(x2 - x1) / CANVAS_W:.6f} "
+                          f"{(y2 - y1) / CANVAS_H:.6f}")
+
+    canvas = np.clip(canvas, 0, 255).astype(np.uint8)
+    # realismo final: desfoque de movimento e granulado
+    if random.random() < 0.4:
+        k = random.choice([3, 5])
+        canvas = cv2.GaussianBlur(canvas, (k, k), 0)
+    if random.random() < 0.5:
+        canvas = np.clip(canvas.astype(np.float32)
+                         + np.random.normal(0, random.uniform(3, 10),
+                                            canvas.shape), 0, 255).astype(np.uint8)
     return canvas, labels
 
 
 def main():
     templates = load_templates()
     if len(templates) < 40:
-        sys.exit(f"só {len(templates)} moldes em {TEMPLATES} — "
-                 "rode capture_deck.py até fechar as 52 cartas")
-    print(f"{len(templates)} moldes; gerando {N_IMAGES} leques...")
+        sys.exit(f"só {len(templates)} moldes — rode capture_deck.py")
+    bgs = load_backgrounds()
+    reset_out()
+    print(f"{len(templates)} moldes, {len(bgs)} fundos; gerando {N_IMAGES}...")
     for i in range(N_IMAGES):
-        canvas, labels = compose_fan(templates)
+        canvas, labels = compose_fan(templates, bgs)
         if not labels:
             continue
         cv2.imwrite(str(OUT / "images" / f"fan_{i:05d}.jpg"), canvas,
-                    [cv2.IMWRITE_JPEG_QUALITY, 90])
+                    [cv2.IMWRITE_JPEG_QUALITY, 88])
         (OUT / "labels" / f"fan_{i:05d}.txt").write_text("\n".join(labels))
-        if (i + 1) % 200 == 0:
+        if (i + 1) % 250 == 0:
             print(f"{i + 1}/{N_IMAGES}")
     print(f"pronto: {OUT}")
 
