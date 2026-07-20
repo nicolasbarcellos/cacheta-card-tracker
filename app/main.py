@@ -5,9 +5,9 @@ import uvicorn
 from app.capture import CameraStream
 from app.cards import Card
 from app.config import config
-from app.detector import (CardDetector, draw_boxes, hand_card_instances,
-                          hand_codes, pick_top_card)
-from app.hand_view import HandView
+from app.detector import (CardDetector, draw_boxes, hand_codes,
+                          hand_instances, pick_top_card)
+from app.hand_reader import FanReader
 from app.server import create_app
 from app.stability import StabilityFilter
 from app.tracker import GameTracker
@@ -27,7 +27,7 @@ def process_frame(detections_discard, detections_hand, filters, tracker,
         tracker.on_stable_top_card(Card.from_label(stable_top),
                                    confidence=top.confidence if top else 1.0)
 
-    if hand_view.update(hand_card_instances(detections_hand)):
+    if hand_view.update(hand_instances(detections_hand)):
         tracker.set_hand_display([Card.from_label(c) for c in hand_view.cards])
     codes = hand_codes(detections_hand)
     stable_hand = filters["hand"].update(codes if codes else None)
@@ -54,7 +54,10 @@ def vision_loop(cams, detector, filters, tracker, annotated, running,
 def main():
     tracker = GameTracker(hand_size=config.hand_size)
     filters = make_filters(config.stable_frames)
-    hand_view = HandView(config.stable_frames, config.hand_absent_frames)
+    hand_view = FanReader(match_dist=config.fan_match_dist,
+                          window=config.fan_window,
+                          min_appear=config.fan_min_appear,
+                          expire=config.fan_expire)
     annotated: dict = {}
     cams = {
         "discard": CameraStream(config.discard_cam_index,

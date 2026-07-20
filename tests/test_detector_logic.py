@@ -28,20 +28,14 @@ def test_hand_codes_dedupes_corner_detections():
     assert hand_codes(dets) == frozenset({"QS", "7D"})
 
 
-def test_instances_vertical_pair_is_one_card():
-    # canto de cima e canto de baixo da mesma carta em pé: dy >> dx
-    dets = [det_at("7H", 100, 100), det_at("7H", 130, 300)]
-    assert hand_card_instances(dets) == {"7H": 1}
-
-
 def test_instances_side_by_side_are_twin_cards():
-    # duas gêmeas no leque: cantos lado a lado (dx >> dy)
+    # duas gêmeas no leque: cantos lado a lado, posições distintas
     dets = [det_at("7H", 100, 100), det_at("7H", 260, 110)]
     assert hand_card_instances(dets) == {"7H": 2}
 
 
 def test_instances_overlapping_boxes_merge():
-    # mesma detecção duplicada (caixas quase sobrepostas)
+    # mesma detecção duplicada (caixas quase coincidentes) -> 1
     dets = [det_at("7H", 100, 100), det_at("7H", 104, 102)]
     assert hand_card_instances(dets) == {"7H": 1}
 
@@ -55,19 +49,16 @@ def test_instances_different_labels_independent():
     assert hand_card_instances(dets) == {"7H": 1, "7D": 1}
 
 
-def test_vertical_pair_with_wrong_label_keeps_top():
-    # canto de baixo (invertido) lido errado: A em cima, "4" embaixo
-    dets = [det_at("AS", 100, 100), det_at("4S", 115, 280)]
-    assert hand_card_instances(dets) == {"AS": 1}
-
-
 def test_overlapping_different_labels_higher_confidence_wins():
-    # mesmo canto com dois palpites: A (0.9) e 4 (0.6)
+    # mesmo canto com dois palpites: A (0.9) e 4 (0.6) quase coincidentes
     dets = [det_at("AS", 100, 100, conf=0.9), det_at("4S", 103, 102, conf=0.6)]
     assert hand_card_instances(dets) == {"AS": 1}
 
 
-def test_far_apart_boxes_not_paired_vertically():
-    # verticais mas longe demais para serem a mesma carta (outra fileira)
-    dets = [det_at("AS", 100, 100), det_at("4S", 110, 900)]
-    assert hand_card_instances(dets) == {"AS": 1, "4S": 1}
+def test_tight_fan_nine_distinct_corners_not_collapsed():
+    # leque apertado: 9 cantos numa fileira, próximos mas distintos -> 9
+    codes = ["AS", "2H", "3D", "4C", "5S", "6H", "7D", "8C", "9S"]
+    dets = [det_at(c, 100 + i * 45, 100 + i * 3) for i, c in enumerate(codes)]
+    result = hand_card_instances(dets)
+    assert sum(result.values()) == 9
+    assert set(result) == set(codes)

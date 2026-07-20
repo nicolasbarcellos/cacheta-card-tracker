@@ -1,12 +1,12 @@
 from app.cards import Card
 from app.detector import Detection
-from app.hand_view import HandView
+from app.hand_reader import FanReader
 from app.main import make_filters, process_frame
 from app.tracker import GameTracker
 
 
 def det(code, conf=0.9, x=0):
-    # caixas espalhadas na horizontal como um leque real (sobrepostas fundem)
+    # caixas espalhadas na horizontal como um leque real (posições distintas)
     return Detection(card=Card.from_label(code), confidence=conf,
                      box=(x, 0, x + 10, 10))
 
@@ -18,7 +18,7 @@ HAND9 = ["AS", "2S", "3S", "4H", "5H", "6H", "7D", "8D", "9D"]
 
 
 def make_hand_view():
-    return HandView(appear_frames=3, absent_frames=6)
+    return FanReader(match_dist=45, window=10, min_appear=3, expire=6)
 
 
 def test_full_turn_through_process_frame():

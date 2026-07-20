@@ -15,6 +15,11 @@ class Config:
     confirm_confidence: float = 0.85
     stable_frames: int = 10
     hand_absent_frames: int = 45  # ~3s sem ver a carta (com outras visíveis) = sai da mão
+    # leitor do leque (votação temporal por posição)
+    fan_match_dist: float = 45.0   # px: casar detecção à mesma vaga entre frames
+    fan_window: int = 25           # frames recentes que votam por vaga
+    fan_min_appear: int = 8        # aparições p/ uma vaga contar (mata fantasmas)
+    fan_expire: int = 18           # frames de ausência p/ a vaga sumir
     hand_size: int = 9
     server_host: str = "127.0.0.1"
     server_port: int = 8000

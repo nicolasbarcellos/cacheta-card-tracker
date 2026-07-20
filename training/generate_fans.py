@@ -165,8 +165,9 @@ def compose_fan(templates, bgs):
         return True
 
     for i, code in enumerate(codes):
-        corners = [CORNER_TL] + ([CORNER_BR] if i == n - 1 else [])
-        for corner in corners:
+        # SÓ o canto de cima é carta. O canto de baixo (invertido) NUNCA é
+        # rotulado -> o modelo aprende a ignorá-lo (não conta 2x a última).
+        for corner in (CORNER_TL,):
             x1, y1, x2, y2, pts = bbox_of(corner, mats[i])
             if not visible(pts, range(i + 1, n)):
                 continue

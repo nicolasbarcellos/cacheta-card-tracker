@@ -28,53 +28,37 @@ def hand_codes(detections: list[Detection]) -> frozenset[str]:
     return frozenset(d.card.code for d in detections)
 
 
-def hand_card_instances(detections: list[Detection]) -> Counter:
-    """Conta as cartas da mão lendo APENAS o canto superior de cada uma.
+def hand_instances(detections: list[Detection]) -> list[Detection]:
+    """Uma detecção por POSIÇÃO (canto de carta), sem colapsar o leque.
 
-    O canto inferior fica de cabeça para baixo e o modelo o lê mal
-    (A vira 4 etc.), então:
-    1. cantos praticamente sobrepostos = dois palpites para o mesmo canto
-       → fica o de maior confiança;
-    2. dois cantos em relação vertical (um sobre o outro, à distância de
-       uma carta) = canto de cima + canto de baixo da MESMA carta, ainda
-       que os rótulos lidos sejam diferentes → fica só o de CIMA.
-    Gêmeas dos 2 baralhos sobrevivem: no leque ficam lado a lado.
+    Num leque apertado cada carta mostra só um índice de canto, lado a
+    lado. Regra única: duas detecções cujos centros estão praticamente no
+    MESMO lugar são o mesmo canto (dois palpites) → fica a de maior
+    confiança. Posições distintas = cartas distintas, mesmo com rótulo
+    igual (gêmeas dos 2 baralhos sobrevivem). Nada de lógica de "canto de
+    baixo": o modelo v2 já foi treinado para ler só o canto de cima.
     """
-    boxes = []
-    for d in detections:
-        x1, y1, x2, y2 = d.box
-        size = max(x2 - x1, y2 - y1, 1)
-        boxes.append((d.card.code, (x1 + x2) / 2, (y1 + y2) / 2, size,
-                      d.confidence))
-
-    # 1) sobrepostas (mesmo canto, qualquer rótulo): maior confiança vence
-    boxes.sort(key=lambda b: -b[4])
-    kept: list[tuple] = []
-    for code, cx, cy, size, conf in boxes:
-        for _, kx, ky, ksize, _ in kept:
-            if abs(cx - kx) < ksize * 0.8 and abs(cy - ky) < ksize * 0.8:
+    ordered = sorted(detections, key=lambda d: -d.confidence)
+    kept: list[Detection] = []
+    for d in ordered:
+        cx, cy = (d.box[0] + d.box[2]) / 2, (d.box[1] + d.box[3]) / 2
+        size = max(d.box[2] - d.box[0], d.box[3] - d.box[1], 1)
+        dup = False
+        for k in kept:
+            kx, ky = (k.box[0] + k.box[2]) / 2, (k.box[1] + k.box[3]) / 2
+            ksize = max(k.box[2] - k.box[0], k.box[3] - k.box[1], 1)
+            thr = 0.55 * min(size, ksize)  # só funde quase-coincidentes
+            if abs(cx - kx) < thr and abs(cy - ky) < thr:
+                dup = True
                 break
-        else:
-            kept.append((code, cx, cy, size, conf))
+        if not dup:
+            kept.append(d)
+    return kept
 
-    # 2) relação vertical dentro do alcance de uma carta: descarta o de baixo
-    dropped = set()
-    for i in range(len(kept)):
-        if i in dropped:
-            continue
-        _, ix, iy, isize, _ = kept[i]
-        for j in range(i + 1, len(kept)):
-            if j in dropped:
-                continue
-            _, jx, jy, jsize, _ = kept[j]
-            dx, dy = abs(ix - jx), abs(iy - jy)
-            reach = 12 * max(isize, jsize)  # ~diagonal de uma carta
-            if dy > dx and (dx * dx + dy * dy) ** 0.5 < reach:
-                dropped.add(j if jy > iy else i)
-                if i in dropped:
-                    break
 
-    return Counter(kept[i][0] for i in range(len(kept)) if i not in dropped)
+def hand_card_instances(detections: list[Detection]) -> Counter:
+    """Contagem código→quantidade das cartas distintas da mão."""
+    return Counter(d.card.code for d in hand_instances(detections))
 
 
 def draw_boxes(frame, detections: list[Detection]):
