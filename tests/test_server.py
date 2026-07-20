@@ -59,3 +59,29 @@ def test_websocket_sends_state_on_connect():
         data = ws.receive_json()
         assert data["type"] == "state"
         assert data["discard"]["card"]["code"] == "QS"
+
+
+def test_correct_hand_endpoint():
+    from app.cards import Card
+    tracker, client = make_client()
+    tracker.set_hand_display([Card.from_label(x) for x in
+                              ["AS", "2S", "9C", "9C", "6C"]])
+    # posição 3 é 9C errado -> corrige para 9S
+    resp = client.post("/api/correct-hand", json={"index": 3, "card": "9S"})
+    assert resp.status_code == 200
+    codes = [c["code"] for c in tracker.state()["hand"]]
+    assert "9S" in codes
+
+
+def test_correct_hand_invalid_index():
+    _, client = make_client()
+    resp = client.post("/api/correct-hand", json={"index": 5, "card": "9S"})
+    assert resp.status_code == 404
+
+
+def test_correct_hand_invalid_card():
+    from app.cards import Card
+    tracker, client = make_client()
+    tracker.set_hand_display([Card.from_label("AS")])
+    resp = client.post("/api/correct-hand", json={"index": 0, "card": "ZZ"})
+    assert resp.status_code == 422

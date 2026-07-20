@@ -23,9 +23,15 @@ class PauseBody(BaseModel):
     paused: bool
 
 
+class CorrectHandBody(BaseModel):
+    index: int
+    card: str
+
+
 def create_app(tracker: GameTracker,
                annotated_frames: dict | None = None,
-               on_new_round=None) -> FastAPI:
+               on_new_round=None,
+               on_relock=None) -> FastAPI:
     app = FastAPI()
     annotated_frames = annotated_frames if annotated_frames is not None else {}
     clients: set[WebSocket] = set()
@@ -86,6 +92,16 @@ def create_app(tracker: GameTracker,
             raise HTTPException(404, f"evento {body.event_id} não existe")
         return {"ok": True}
 
+    @app.post("/api/correct-hand")
+    async def correct_hand(body: CorrectHandBody):
+        try:
+            card = Card.from_label(body.card)
+        except InvalidCardLabel:
+            raise HTTPException(422, f"carta inválida: {body.card}")
+        if not tracker.correct_hand_card(body.index, card):
+            raise HTTPException(404, f"posição {body.index} inválida")
+        return {"ok": True}
+
     @app.post("/api/undo")
     async def undo():
         tracker.undo_last()
@@ -96,6 +112,13 @@ def create_app(tracker: GameTracker,
         tracker.new_round()
         if on_new_round:
             on_new_round()
+        return {"ok": True}
+
+    @app.post("/api/relock")
+    async def relock():
+        # re-lê a mão travada (após descartar/comprar): o próximo 9 estável trava
+        if on_relock:
+            on_relock()
         return {"ok": True}
 
     @app.post("/api/pause")

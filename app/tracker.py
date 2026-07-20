@@ -60,6 +60,17 @@ class GameTracker:
             self.hand_view = as_list
             self.on_change()
 
+    def correct_hand_card(self, index: int, card: Card) -> bool:
+        """Corrige manualmente uma carta da mão travada (clique no painel)."""
+        if not 0 <= index < len(self.hand_view):
+            return False
+        self.hand_view[index] = card
+        self.hand_view = sorted(self.hand_view,
+                                key=lambda c: (_SUIT_ORDER.index(c.suit),
+                                               RANKS.index(c.rank)))
+        self.on_change()
+        return True
+
     def on_stable_hand(self, cards: frozenset[Card]):
         if self.paused or not cards:
             return

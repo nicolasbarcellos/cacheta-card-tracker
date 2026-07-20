@@ -45,11 +45,12 @@
   </div>
   <div class="lado">
     <div class="acoes">
+      <button id="reler">🔄 Reler mão</button>
       <button id="pausar">Pausar detecção</button>
       <button id="desfazer">Desfazer último</button>
       <button id="novarodada" class="perigo">Nova rodada</button>
     </div>
-    <div class="rotulo">Mão atual (<span id="mao-count">0</span> cartas)</div>
+    <div class="rotulo">Mão travada (<span id="mao-count">0</span> cartas)</div>
     <div id="mao-atual"></div>
     <div class="rotulo">Eventos</div>
     <div id="eventos"></div>
@@ -80,6 +81,7 @@
   });
 
   document.getElementById('desfazer').onclick = () => post('/api/undo');
+  document.getElementById('reler').onclick = () => post('/api/relock');
   document.getElementById('novarodada').onclick = () => {
     if (confirm('Zerar a rodada?')) post('/api/new-round');
   };
@@ -87,17 +89,25 @@
   btnPause.onclick = () => post('/api/pause', { paused: !paused });
 
   const dlg = document.getElementById('corrigir');
-  let corrigindoId = null;
+  let alvo = null;  // {tipo:'evento',id} ou {tipo:'mao',index}
   function abrirCorrecao(id) {
-    corrigindoId = id;
-    document.getElementById('dlg-id').textContent = '#' + id;
+    alvo = { tipo: 'evento', id };
+    document.getElementById('dlg-id').textContent = 'evento #' + id;
+    dlg.showModal();
+  }
+  function abrirCorrecaoMao(index, code) {
+    alvo = { tipo: 'mao', index };
+    document.getElementById('dlg-id').textContent = 'carta ' + code;
+    document.getElementById('dlg-rank').value = code.slice(0, -1);
+    document.getElementById('dlg-suit').value = code.slice(-1);
     dlg.showModal();
   }
   document.getElementById('dlg-cancel').onclick = () => dlg.close();
   document.getElementById('dlg-ok').onclick = () => {
     const card = document.getElementById('dlg-rank').value
                + document.getElementById('dlg-suit').value;
-    post('/api/correct', { event_id: corrigindoId, card });
+    if (alvo.tipo === 'mao') post('/api/correct-hand', { index: alvo.index, card });
+    else post('/api/correct', { event_id: alvo.id, card });
     dlg.close();
   };
 
@@ -107,8 +117,10 @@
     btnPause.classList.toggle('ativo', paused);
     const hand = state.hand || [];
     document.getElementById('mao-count').textContent = hand.length;
-    document.getElementById('mao-atual').innerHTML = hand.map(c =>
-      `<img src="/assets/cards/${c.asset}" title="${c.display}">`).join('');
+    document.getElementById('mao-atual').innerHTML = hand.map((c, i) =>
+      `<img src="/assets/cards/${c.asset}" title="${c.display} (clique p/ corrigir)"
+            style="cursor:pointer" onclick="abrirCorrecaoMao(${i}, '${c.code}')">`
+      ).join('');
     document.getElementById('eventos').innerHTML = state.events.map(e => `
       <div class="evento ${e.confirmed ? '' : 'pendente'}">
         <img src="/assets/cards/${e.card.asset}" alt="">
