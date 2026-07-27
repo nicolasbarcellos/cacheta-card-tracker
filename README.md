@@ -49,11 +49,17 @@ python -m app.main
 Se o reconhecimento falhar com suas cartas/iluminação:
 
 ```powershell
-python training/capture_auto.py     # 1. captura frames automaticamente (2 min)
-python training/auto_annotate.py    # 2. o modelo atual anota sozinho
-# 3. revisar: apagar fotos erradas em training/datasets/local/review/
-python training/finetune_local.py   # 4. re-treina na GPU e publica o novo modelo
+python training/capture_deck.py     # 1. molde das 52 cartas do seu baralho
+python training/generate_fans.py    # 2. gera leques sintéticos a partir deles
+python training/capture_auto.py     # 3. captura frames reais da câmera (2 min)
+python training/auto_annotate.py    # 4. o modelo atual anota sozinho
+# 5. revisar: apagar fotos erradas em training/datasets/local/review/
+python training/finetune_local.py   # 6. treina com sintético + real e publica
 ```
+
+O treino mistura as duas fontes: os leques sintéticos dão volume e variedade,
+os frames reais ancoram o modelo na sua câmera e iluminação. Detalhes e
+scripts de diagnóstico em [`training/README.md`](training/README.md).
 
 ## Testes
 
