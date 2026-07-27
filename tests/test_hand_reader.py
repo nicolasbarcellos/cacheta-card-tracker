@@ -3,13 +3,36 @@ from app.detector import Detection
 from app.hand_reader import FanReader
 
 
-def d(code, x, y=100, size=30):
-    return Detection(card=Card.from_label(code), confidence=0.9,
+def d(code, x, y=100, size=30, conf=0.9):
+    return Detection(card=Card.from_label(code), confidence=conf,
                      box=(x, y, x + size, y + size))
 
 
 def fan(*items):
     return [d(code, x) for code, x in items]
+
+
+def test_confidence_outweighs_frequency_on_same_slot():
+    """Naipe da mesma cor lido errado em confiança baixa não deve vencer.
+
+    Padrão medido no setup real: o K♠ correto sai a ~0.85 e o K♣ errado a
+    ~0.34. Por maioria simples o errado venceria (6 votos contra 4).
+    """
+    r = FanReader(min_appear=3, window=20)
+    for _ in range(6):
+        r.update([d("KC", 100, conf=0.34)])
+    for _ in range(4):
+        r.update([d("KS", 100, conf=0.85)])
+    assert r.cards == ["KS"]  # 4*0.85 = 3.40 > 6*0.34 = 2.04
+
+
+def test_plain_majority_still_wins_at_equal_confidence():
+    r = FanReader(min_appear=3, window=20)
+    for _ in range(2):
+        r.update([d("4S", 100, conf=0.8)])
+    for _ in range(5):
+        r.update([d("AS", 100, conf=0.8)])
+    assert r.cards == ["AS"]
 
 
 def test_stable_fan_confirmed_after_min_appear():
@@ -69,6 +92,31 @@ def test_cards_sorted_left_to_right():
     r = FanReader(min_appear=1)
     r.update(fan(("3D", 300), ("AS", 100), ("2H", 200)))
     assert r.cards == ["AS", "2H", "3D"]
+
+
+def test_max_slots_caps_the_hand():
+    r = FanReader(min_appear=2, max_slots=3)
+    frame = fan(("AS", 100), ("2H", 200), ("3D", 300), ("4C", 400))
+    r.update(frame); r.update(frame)
+    assert len(r.cards) == 3
+
+
+def test_max_slots_keeps_recent_over_stale_after_fan_moves():
+    """Leque se move: vaga velha é forte mas ausente; a nova é que vale."""
+    r = FanReader(match_dist=30, min_appear=2, expire=24, max_slots=2)
+    for _ in range(10):                       # posições antigas, bem firmadas
+        r.update(fan(("AS", 100), ("2H", 200)))
+    for _ in range(3):                        # leque desloca 200px à direita
+        r.update(fan(("AS", 300), ("2H", 400)))
+    assert r.cards == ["AS", "2H"]            # 2 vagas, não 4 duplicadas
+
+
+def test_max_slots_drops_the_weakest_when_all_present():
+    r = FanReader(min_appear=2, max_slots=2)
+    for _ in range(5):
+        r.update([d("AS", 100, conf=0.9), d("2H", 200, conf=0.9),
+                  d("6C", 300, conf=0.31)])   # vaga fraca perde o corte
+    assert r.cards == ["AS", "2H"]
 
 
 def test_reset_clears():

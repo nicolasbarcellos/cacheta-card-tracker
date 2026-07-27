@@ -60,7 +60,8 @@ def main():
     hand_view = FanReader(match_dist=config.fan_match_dist,
                           window=config.fan_window,
                           min_appear=config.fan_min_appear,
-                          expire=config.fan_expire)
+                          expire=config.fan_expire,
+                          max_slots=config.hand_size)
     hand_lock = StableHand(hand_size=config.hand_size,
                            lock_frames=config.lock_frames)
     annotated: dict = {}
