@@ -15,3 +15,9 @@ training/live_*.jpg
 training/debug_*.jpg
 training/check_*.jpg
 training/contact_sheet.jpg
+training/diag_*.jpg
+training/dump.jpg
+training/frame_*.jpg
+
+# pesos baixados fora de models/
+yolo*.pt
