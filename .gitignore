@@ -2,6 +2,7 @@ __pycache__/
 *.pyc
 .venv/
 models/*.pt
+!models/cards.pt
 training/datasets/
 training/runs/
 assets/cards/*.png
