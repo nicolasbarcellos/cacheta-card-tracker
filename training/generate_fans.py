@@ -25,11 +25,10 @@ from app.cards import RANKS, SUITS  # noqa: E402
 N_IMAGES = int(sys.argv[1]) if len(sys.argv) > 1 else 2000
 CANVAS_W, CANVAS_H = 1280, 720
 TPL_W, TPL_H = 250, 350
-# índice (valor+naipe) do canto superior-esquerdo no molde 250x350
-CORNER_TL = np.array([[10, 12], [56, 12], [56, 96], [10, 96]], np.float32)
-CORNER_BR = np.array([[TPL_W - 56, TPL_H - 96], [TPL_W - 10, TPL_H - 96],
-                      [TPL_W - 10, TPL_H - 12], [TPL_W - 56, TPL_H - 12]],
-                     np.float32)
+# fallback: índice (valor+naipe) do canto superior-esquerdo no molde 250x350.
+# Só entra em ação se a medição por molde falhar — ver detect_corner_tl().
+DEFAULT_CORNER_TL = np.array([[10, 12], [56, 12], [56, 96], [10, 96]],
+                             np.float32)
 
 ROOT = Path(__file__).resolve().parent
 TEMPLATES = ROOT / "templates"
@@ -49,12 +48,67 @@ ALL_CODES = sorted(f"{r}{s}" for r in RANKS for s in SUITS)
 NAME_TO_ID = {c: i for i, c in enumerate(ALL_CODES)}
 
 
+def detect_corner_tl(img):
+    """Mede a caixa do índice (valor+naipe) do canto superior-esquerdo.
+
+    Uma caixa fixa erra quando o molde está desalinhado — nem todo molde saiu
+    do capture_deck.py com a carta no mesmo lugar, alguns ficaram com sobra de
+    fundo da mesa (4C e AC, p.ex.), e aí a caixa fixa cai no fundo em vez de
+    cair no valor. Medindo no próprio molde, a caixa acompanha a carta.
+
+    Como: acha a tinta (pixel que destoa do papel, preto ou vermelho) e
+    agrupa o bloco do índice — o valor mais o pip logo abaixo — parando antes
+    dos pips centrais, separados por um vão bem maior. Contorno que ENCOSTA na
+    borda da janela é aresta da carta, mesa ou carta vizinha, não índice.
+    Se a medição não convencer, cai no DEFAULT_CORNER_TL.
+    """
+    win_w, win_h = int(TPL_W * 0.34), int(TPL_H * 0.40)
+    region = img[:win_h, :win_w]
+    val = cv2.split(cv2.cvtColor(region, cv2.COLOR_BGR2HSV))[2]
+    # papel = mediana só dos pixels claros: imune à sobra de mesa escura
+    paper = np.median(region[val >= np.percentile(val, 60)].reshape(-1, 3),
+                      axis=0)
+    dist = np.linalg.norm(region.astype(np.float32) - paper, axis=2)
+    ink = (dist > 55).astype(np.uint8) * 255
+
+    contours, _ = cv2.findContours(ink, cv2.RETR_EXTERNAL,
+                                   cv2.CHAIN_APPROX_SIMPLE)
+    boxes = []
+    for c in contours:
+        if cv2.contourArea(c) <= 25:
+            continue
+        x, y, w, h = cv2.boundingRect(c)
+        if x == 0 or y == 0 or x + w >= win_w or y + h >= win_h:
+            continue
+        boxes.append((x, y, w, h))
+    if not boxes:
+        return DEFAULT_CORNER_TL
+    boxes.sort(key=lambda b: b[1])
+
+    group = [boxes[0]]
+    for b in boxes[1:]:
+        if b[1] - max(g[1] + g[3] for g in group) > 22:
+            break
+        group.append(b)
+
+    pad = 3
+    x1 = max(min(b[0] for b in group) - pad, 0)
+    y1 = max(min(b[1] for b in group) - pad, 0)
+    x2 = min(max(b[0] + b[2] for b in group) + pad, win_w)
+    y2 = min(max(b[1] + b[3] for b in group) + pad, win_h)
+    if not (15 <= x2 - x1 <= win_w * 0.95 and 25 <= y2 - y1 <= win_h * 0.95):
+        return DEFAULT_CORNER_TL
+    return np.array([[x1, y1], [x2, y1], [x2, y2], [x1, y2]], np.float32)
+
+
 def load_templates():
+    """code -> (molde, caixa do índice medida nele)."""
     t = {}
     for p in TEMPLATES.glob("*.png"):
         img = cv2.imread(str(p))
         if img is not None and p.stem in NAME_TO_ID:
-            t[p.stem] = cv2.resize(img, (TPL_W, TPL_H))
+            card = cv2.resize(img, (TPL_W, TPL_H))
+            t[p.stem] = (card, detect_corner_tl(card))
     return t
 
 
@@ -139,7 +193,7 @@ def compose_fan(templates, bgs):
 
     # desenha da esquerda p/ direita (as de cima cobrem as de baixo)
     for i, code in enumerate(codes):
-        card = jitter_card(templates[code])
+        card = jitter_card(templates[code][0])
         warped = cv2.warpPerspective(card.astype(np.float32), mats[i],
                                      (CANVAS_W, CANVAS_H))
         mask = cv2.warpPerspective(np.full((TPL_H, TPL_W), 255, np.uint8),
@@ -167,19 +221,19 @@ def compose_fan(templates, bgs):
     for i, code in enumerate(codes):
         # SÓ o canto de cima é carta. O canto de baixo (invertido) NUNCA é
         # rotulado -> o modelo aprende a ignorá-lo (não conta 2x a última).
-        for corner in (CORNER_TL,):
-            x1, y1, x2, y2, pts = bbox_of(corner, mats[i])
-            if not visible(pts, range(i + 1, n)):
-                continue
-            if x1 < 0 or y1 < 0 or x2 >= CANVAS_W or y2 >= CANVAS_H:
-                continue
-            if (x2 - x1) < 8 or (y2 - y1) < 12:
-                continue
-            labels.append(f"{NAME_TO_ID[code]} "
-                          f"{(x1 + x2) / 2 / CANVAS_W:.6f} "
-                          f"{(y1 + y2) / 2 / CANVAS_H:.6f} "
-                          f"{(x2 - x1) / CANVAS_W:.6f} "
-                          f"{(y2 - y1) / CANVAS_H:.6f}")
+        # A caixa vem medida do molde (detect_corner_tl), não é fixa.
+        x1, y1, x2, y2, pts = bbox_of(templates[code][1], mats[i])
+        if not visible(pts, range(i + 1, n)):
+            continue
+        if x1 < 0 or y1 < 0 or x2 >= CANVAS_W or y2 >= CANVAS_H:
+            continue
+        if (x2 - x1) < 8 or (y2 - y1) < 12:
+            continue
+        labels.append(f"{NAME_TO_ID[code]} "
+                      f"{(x1 + x2) / 2 / CANVAS_W:.6f} "
+                      f"{(y1 + y2) / 2 / CANVAS_H:.6f} "
+                      f"{(x2 - x1) / CANVAS_W:.6f} "
+                      f"{(y2 - y1) / CANVAS_H:.6f}")
 
     canvas = np.clip(canvas, 0, 255).astype(np.uint8)
     # realismo final: desfoque de movimento e granulado

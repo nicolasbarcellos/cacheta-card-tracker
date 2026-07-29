@@ -1,8 +1,19 @@
-"""Fine-tuning local: re-treina models/cards.pt com os leques sintéticos.
+"""Fine-tuning local: re-treina models/cards.pt com leques sintéticos + reais.
 
-Consome training/datasets/synthetic/ (gerado por generate_fans.py a partir
-dos moldes do seu baralho), separa treino/validação, monta o data.yaml com
-as classes na ordem do modelo e treina a partir dos pesos atuais.
+Consome duas fontes e mistura as duas:
+
+- training/datasets/synthetic/ — gerado por generate_fans.py a partir dos
+  moldes do seu baralho. Muitas imagens, variedade fácil, mas é simulação.
+- training/datasets/local/     — frames REAIS da sua câmera, capturados por
+  capture_auto.py e pré-anotados por auto_annotate.py. Poucas imagens, porém
+  é a distribuição que o modelo vai encontrar de verdade.
+
+Do dataset real só entram os frames cuja imagem em local/review/ sobreviveu:
+apagar a foto de revisão é como você rejeita uma anotação errada.
+
+Como o sintético é muito mais numeroso, os frames reais são repetidos algumas
+vezes (REAL_TARGET_SHARE) — senão eles se diluem e o treino ignora justamente
+o dado que importa.
 
 O modelo antigo fica salvo em models/cards_backup_N.pt.
 """
@@ -16,36 +27,86 @@ from ultralytics import YOLO  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent
 SYNTH = ROOT / "datasets" / "synthetic"
+LOCAL = ROOT / "datasets" / "local"
 TRAINSET = ROOT / "datasets" / "fans-split"
 MODEL = Path("models/cards.pt")
 
+REAL_TARGET_SHARE = 0.30   # fatia do treino que os frames reais devem ocupar
+REAL_MAX_REPEAT = 6        # teto: repetir demais decora o pouco dado real
+
+
+def collect(source, needs_review=False):
+    """[(imagem, rótulo)] de um dataset no formato images/ + labels/."""
+    pairs = []
+    for img in sorted((source / "images").glob("*.jpg")):
+        label = source / "labels" / f"{img.stem}.txt"
+        if not label.exists():
+            continue
+        if needs_review and not (source / "review" / img.name).exists():
+            continue  # revisão apagada = anotação rejeitada por você
+        pairs.append((img, label))
+    return pairs
+
+
+def split_pairs(pairs, seed):
+    """Separa validação de treino DENTRO de cada fonte.
+
+    Estratificado de propósito: se sorteasse do bolo misturado, a validação
+    poderia sair só de sintético e não mediria nada sobre o dado real.
+    """
+    pairs = list(pairs)
+    random.Random(seed).shuffle(pairs)
+    n_val = min(max(1, len(pairs) // 10), max(0, len(pairs) - 1)) if pairs else 0
+    return pairs[n_val:], pairs[:n_val]
+
 
 def main():
-    kept = sorted((SYNTH / "images").glob("*.jpg"))
-    if len(kept) < 200:
-        sys.exit(f"só {len(kept)} imagens em {SYNTH} — rode generate_fans.py")
+    synthetic = collect(SYNTH)
+    real = collect(LOCAL, needs_review=True)
+    print(f"sintético: {len(synthetic)} imagens ({SYNTH})")
+    print(f"real:      {len(real)} imagens revisadas ({LOCAL})")
+    if len(synthetic) + len(real) < 200:
+        sys.exit("dados insuficientes — rode generate_fans.py e/ou "
+                 "capture_auto.py + auto_annotate.py")
+    if not real:
+        print("AVISO: nenhum frame real. O modelo vai treinar só em simulação, "
+              "que é o que costuma falhar no setup de verdade.")
 
-    random.seed(42)
-    random.shuffle(kept)
-    n_val = max(50, len(kept) // 10)
-    splits = {"val": kept[:n_val], "train": kept[n_val:]}
+    syn_train, syn_val = split_pairs(synthetic, seed=42)
+    real_train, real_val = split_pairs(real, seed=43)
+
+    # repete o real até ele pesar REAL_TARGET_SHARE do treino
+    repeat = 1
+    if real_train:
+        alvo = REAL_TARGET_SHARE * len(syn_train) / (1 - REAL_TARGET_SHARE)
+        repeat = max(1, min(REAL_MAX_REPEAT, round(alvo / len(real_train))))
+        if repeat > 1:
+            print(f"repetindo os {len(real_train)} frames reais {repeat}x "
+                  f"para não diluí-los em {len(syn_train)} sintéticos")
+
+    splits = {"train": syn_train + real_train * repeat,
+              "val": syn_val + real_val}
 
     if TRAINSET.exists():
         shutil.rmtree(TRAINSET)
-    for split, files in splits.items():
+    for split, pairs in splits.items():
         (TRAINSET / "images" / split).mkdir(parents=True)
         (TRAINSET / "labels" / split).mkdir(parents=True)
-        for img in files:
-            shutil.copy(img, TRAINSET / "images" / split / img.name)
-            label = SYNTH / "labels" / f"{img.stem}.txt"
-            shutil.copy(label, TRAINSET / "labels" / split / label.name)
+        for i, (img, label) in enumerate(pairs):
+            # índice no nome: as repetições do real não podem se sobrescrever
+            stem = f"{i:06d}_{img.stem}"
+            shutil.copy(img, TRAINSET / "images" / split / f"{stem}.jpg")
+            shutil.copy(label, TRAINSET / "labels" / split / f"{stem}.txt")
 
     names = YOLO(str(MODEL)).names
     yaml = [f"path: {TRAINSET.resolve().as_posix()}",
             "train: images/train", "val: images/val", "names:"]
     yaml += [f"  {i}: {name}" for i, name in names.items()]
     (TRAINSET / "data.yaml").write_text("\n".join(yaml))
-    print(f"{len(splits['train'])} treino / {len(splits['val'])} validação")
+    n_real = len(real_train) * repeat
+    share = 100 * n_real / len(splits["train"]) if splits["train"] else 0
+    print(f"{len(splits['train'])} treino / {len(splits['val'])} validação "
+          f"({n_real} amostras reais no treino = {share:.0f}%)")
 
     # backup do modelo atual antes de sobrescrever
     n = 1

@@ -1,18 +1,69 @@
 # Treino
 
-1. `pip install roboflow` e exportar `ROBOFLOW_API_KEY`
-2. `python training/download_dataset.py` — baixa o dataset público
-3. `python training/train.py` — treina e publica `models/cards.pt`
-4. Fine-tuning com o setup real: ver `training/capture_frames.py` (Task 14)
+O modelo em `models/cards.pt` reconhece o **índice do canto superior-esquerdo**
+de cada carta — é o que fica visível num leque apertado. 52 classes, sem
+coringa, nomes no formato `AS`, `10C`, `QH` (interpretáveis por `Card.from_label`).
 
-Se trocar de dataset, conferir se os nomes das classes em `data.yaml`
-são interpretáveis por `Card.from_label` (`10C`, `AS`, `qh`...).
+## Fluxo local (sem nuvem) — o que se usa hoje
 
-## Fine-tuning
+```powershell
+python training/capture_deck.py      # 1. molde das 52 cartas do SEU baralho
+python training/generate_fans.py     # 2. leques sintéticos a partir dos moldes
+python training/capture_auto.py      # 3. frames REAIS da sua câmera
+python training/auto_annotate.py     # 4. o modelo atual pré-anota os frames
+#    5. revisar: apagar as fotos erradas em training/datasets/local/review/
+python training/finetune_local.py    # 6. treina com sintético + real e publica
+```
 
-1. `python training/capture_frames.py` durante uma partida simulada
-2. Anotar no Roboflow/Label Studio (pré-anotar com o modelo atual)
-3. Mesclar com o dataset base, editar `train.py` p/ partir de `models/cards.pt`
-4. `python training/train.py` e repetir o teste ponta a ponta
+O passo 5 é o único manual e o mais importante: abra `datasets/local/review/`
+no Explorer e **apague as fotos onde o modelo errou** (carta com rótulo errado
+ou carta sem caixa). O `finetune_local.py` só usa os frames cuja imagem de
+revisão sobreviveu.
 
-Meta de aceite: ≥95% descartes, ≥90% compras numa partida de teste.
+Se quiser só regenerar o sintético e re-treinar, os passos 3-5 são opcionais —
+mas aí o treino vira simulação pura, que é justamente o que costuma falhar no
+setup real.
+
+### O que cada script produz
+
+| Script | Saída |
+|---|---|
+| `capture_deck.py` | `training/templates/*.png` (52 moldes) |
+| `generate_fans.py` | `training/datasets/synthetic/{images,labels}/` |
+| `capture_auto.py` | `training/datasets/meu-setup/*.jpg` |
+| `auto_annotate.py` | `training/datasets/local/{images,labels,review}/` |
+| `finetune_local.py` | `models/cards.pt` (backup do antigo em `cards_backup_N.pt`) |
+
+O `finetune_local.py` mistura as duas fontes e **repete os frames reais** até
+eles ocuparem ~30% do treino — sem isso os poucos frames reais se diluem entre
+milhares de sintéticos e o treino ignora o dado que mais importa.
+
+Se o resultado piorar, o script imprime o comando para voltar ao backup.
+
+## Diagnóstico
+
+| Script | Para quê |
+|---|---|
+| `aim.py` | mirar a câmera: leque dentro do retângulo, contagem ao vivo |
+| `diagnose_live.py` | janela ao vivo + log de quais cartas e com que confiança |
+| `diagnose.py` | mede estabilidade em ~40 frames com o leque parado |
+| `dump_dets.py` | despeja todas as detecções com coordenadas e tamanho |
+
+Use `diagnose_live.py` antes de culpar o modelo: leque pequeno no quadro
+degrada muito o reconhecimento, porque o pip do naipe é o menor detalhe do
+índice e é o primeiro a se perder.
+
+## Fluxo antigo (Roboflow) — só para treinar do zero
+
+```powershell
+pip install roboflow            # e exportar ROBOFLOW_API_KEY
+python training/download_dataset.py
+python training/train.py        # YOLO11s do zero, 50 épocas
+```
+
+Serve para gerar um modelo base quando não há nenhum. Para ajustar um modelo
+que já existe ao seu baralho e à sua iluminação, use o fluxo local acima.
+
+## Meta de aceite
+
+≥95% dos descartes e ≥90% das compras corretos numa partida de teste.
