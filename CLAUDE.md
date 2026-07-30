@@ -134,6 +134,39 @@ Ao mexer aqui, os testes de regressão a manter verdes são os
 **Qualquer teste novo de `hand_instances` deve usar caixa estreita e alta**, não
 quadrada, senão não exercita o caso que importa.
 
+### Quando a detecção COLAPSA, suspeite da geometria do gerador
+
+O erro mais caro da sessão de 2026-07-30 não estava no modelo, no tremor nem no
+casamento de vagas: o gerador produzia leques de **28-52° de abertura** e um leque
+de 9 cartas na mão abre **150-180°** (com 9 cartas ninguém abre 40 — você abre para
+enxergar os índices). As cartas das pontas chegavam com o índice deitado ou de cabeça
+para baixo, orientação ausente do treino. Medido no frame ao vivo: **5 detecções brutas
+para 9 cartas**, 3 no limiar do app, e as únicas certas eram as duas do MEIO do leque.
+
+Sintoma que engana: parece erro de modelo ou de leitor, porque a mão sai errada. Mas
+não havia detecção para o leitor casar. **Se a mão não trava e o log de trava não
+imprime, olhe o `/stream/hand` e conte as caixas antes de mexer em qualquer parâmetro.**
+
+Três parâmetros do `generate_fans.py` que precisam corresponder à câmera real, e que
+falham em silêncio quando não correspondem:
+
+- **abertura** (`total_spread`): hoje 25-150°.
+- **escala**: o leque precisa PREENCHER o quadro como preenche ao vivo (~16% da largura
+  do frame na câmera real). Encolher o leque para ele "caber" no canvas afasta o
+  sintético do real — o certo é recortar o rótulo na borda.
+- **passo** entre cartas: é ele que EXPÕE o índice. Abaixo de ~0.18 da largura da carta,
+  a carta seguinte cobre o índice da anterior. Com 0.03-0.06, **60,6% dos índices ficavam
+  sem rótulo** e cada imagem rendia 3,4 rótulos em vez de 8,5.
+
+Use o contador `DROP_STATS` do gerador para verificar: ele separa "coberto" de "fora do
+quadro" e de "pequeno". Três tentativas de deduzir a causa olhando as imagens geradas
+falharam; o contador resolveu na primeira. **Meça, não deduza** — vale para o gerador
+tanto quanto para o modelo.
+
+Rótulo é o outro cuidado: um índice **visível na imagem e sem rótulo** ensina o modelo
+que aquele padrão é fundo. Por isso a caixa que passa da borda é recortada, não
+descartada — descartar era pior que perder a amostra.
+
 ### Leque parado vale mais que qualquer parâmetro
 
 Medido em 2026-07-30 com o leque grande no quadro e segurado na mão: jitter da mesma
