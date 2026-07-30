@@ -34,6 +34,14 @@ MODEL = Path("models/cards.pt")
 REAL_TARGET_SHARE = 0.30   # fatia do treino que os frames reais devem ocupar
 REAL_MAX_REPEAT = 6        # teto: repetir demais decora o pouco dado real
 
+# Ajustáveis na linha de comando: epochs imgsz batch.
+# imgsz alto é necessário (o índice de canto é pequeno e o pip do naipe é o
+# primeiro detalhe a se perder), mas 1280 com batch 6 NÃO cabe em 4 GB de VRAM
+# — num RTX 3050 Laptop é preciso baixar o batch. Ex.: `... 12 1280 3`.
+EPOCHS = int(sys.argv[1]) if len(sys.argv) > 1 else 12
+IMGSZ = int(sys.argv[2]) if len(sys.argv) > 2 else 1280
+BATCH = int(sys.argv[3]) if len(sys.argv) > 3 else 6
+
 
 def collect(source, needs_review=False):
     """[(imagem, rótulo)] de um dataset no formato images/ + labels/."""
@@ -116,13 +124,14 @@ def main():
     print(f"backup: {backup}")
 
     model = YOLO(str(MODEL))
+    print(f"treino: epochs={EPOCHS} imgsz={IMGSZ} batch={BATCH}")
     model.train(
         data=str(TRAINSET / "data.yaml"),
-        epochs=12,        # menos épocas: evita fixar demais no sintético
-        imgsz=1280,       # índices de canto são pequenos: resolução alta
+        epochs=EPOCHS,    # menos épocas: evita fixar demais no sintético
+        imgsz=IMGSZ,      # índices de canto são pequenos: resolução alta
         lr0=0.0003,       # lr baixo: ajuste fino
         freeze=10,        # congela o "miolo" (backbone) — não esquece o real
-        batch=6,          # imgsz maior consome mais VRAM
+        batch=BATCH,      # imgsz maior consome mais VRAM
         mosaic=0.0,       # mosaico descaracteriza o layout de leque
         scale=0.2, translate=0.05,  # augment moderado
         project=str(ROOT / "runs"),
