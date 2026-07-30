@@ -1,6 +1,6 @@
 from app.cards import Card
 from app.detector import (Detection, hand_card_instances, hand_codes,
-                          pick_top_card)
+                          hand_instances, pick_top_card)
 
 
 def det(code, conf):
@@ -53,6 +53,40 @@ def test_overlapping_different_labels_higher_confidence_wins():
     # mesmo canto com dois palpites: A (0.9) e 4 (0.6) quase coincidentes
     dets = [det_at("AS", 100, 100, conf=0.9), det_at("4S", 103, 102, conf=0.6)]
     assert hand_card_instances(dets) == {"AS": 1}
+
+
+def det_tall(code, x, y, w=44, h=84, conf=0.9):
+    """Caixa com a forma REAL de um índice de canto: estreita e alta."""
+    return Detection(card=Card.from_label(code), confidence=conf,
+                     box=(x, y, x + w, y + h))
+
+
+def test_tall_index_boxes_at_fan_spacing_are_not_merged():
+    """Regressão: o raio de fusão vinha da MAIOR dimensão (a altura).
+
+    Com a caixa real (44x84px) isso dava 46px de raio, maior que o
+    espaçamento entre cantos vizinhos (19px no pior caso, 34px mediano), e
+    cada carta apagava a vizinha — 48% da mão desaparecia. O raio tem de sair
+    da menor dimensão (a largura), que é o eixo em que o leque se separa.
+    """
+    dets = [det_tall("AS", 100, 100), det_tall("2H", 134, 103),
+            det_tall("3D", 168, 106)]
+    assert len(hand_instances(dets)) == 3
+
+
+def test_tall_index_boxes_worst_case_spacing_survives():
+    # 19px é o menor espaçamento medido entre cantos vizinhos
+    dets = [det_tall("AS", 100, 100), det_tall("2H", 119, 101)]
+    assert len(hand_instances(dets)) == 2
+
+
+def test_tall_index_same_corner_two_guesses_still_merges():
+    # mesmo canto lido como A e como 4: centros quase coincidentes -> funde
+    dets = [det_tall("AS", 100, 100, conf=0.9),
+            det_tall("4S", 104, 103, conf=0.6)]
+    kept = hand_instances(dets)
+    assert len(kept) == 1
+    assert kept[0].card.code == "AS"
 
 
 def test_tight_fan_nine_distinct_corners_not_collapsed():

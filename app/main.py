@@ -72,7 +72,8 @@ def main():
                              config.frame_width, config.frame_height),
     }
     detector = CardDetector(config.model_path, config.min_confidence,
-                            imgsz=config.detect_imgsz)
+                            imgsz=config.detect_imgsz,
+                            agnostic_nms=config.agnostic_nms)
 
     def reset_filters():
         filters["discard"].reset()
