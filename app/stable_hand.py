@@ -24,23 +24,40 @@ class StableHand:
         self.lock_frames = lock_frames
         self._score: dict[str, float] = {}
         self._last_candidate: tuple = ()
+        self._last_live: list[str] = []
         self._stable = 0
         self._locked: list[str] = []
 
     def _candidate(self) -> list[str]:
-        # multiconjunto: repete a carta conforme quantas instâncias têm score alto
-        counts = Counter()
+        """Multiconjunto das cartas com score alto, NA ORDEM da leitura viva.
+
+        A ordem é informação, não detalhe: o FanReader entrega as vagas da
+        esquerda para a direita, que é a ordem física do leque na mão do
+        jogador. Ordenar por código aqui (como era antes) jogava isso fora e
+        o overlay mostrava a mão embaralhada.
+        """
+        counts: Counter = Counter()
         for key, sc in self._score.items():
             if sc >= self.in_thresh:
                 code, _idx = key
                 counts[code] += 1
-        out = []
+        out: list[str] = []
+        usados: Counter = Counter()
+        for code in self._last_live:        # ordem física, esquerda -> direita
+            if usados[code] < counts[code]:
+                out.append(code)
+                usados[code] += 1
+        # carta com score alto que sumiu neste frame ainda conta; sem posição
+        # conhecida, vai para o fim em ordem determinística
         for code in sorted(counts):
-            out.extend([code] * counts[code])
+            while usados[code] < counts[code]:
+                out.append(code)
+                usados[code] += 1
         return out
 
     def update(self, live_cards) -> bool:
         # score por instância: 7H,7H viram (7H,0) e (7H,1)
+        self._last_live = list(live_cards)
         seen = Counter()
         present = set()
         for code in live_cards:
@@ -55,7 +72,10 @@ class StableHand:
                     del self._score[key]
 
         candidate = self._candidate()
-        cand_key = tuple(candidate)
+        # a ESTABILIDADE olha o conjunto, não a ordem: duas cartas trocando de
+        # lugar por um tremor não é mão nova e não pode reiniciar a contagem.
+        # A ordem, essa, é preservada em `candidate` para a exibição.
+        cand_key = tuple(sorted(candidate))
         if cand_key == self._last_candidate:
             self._stable += 1
         else:
@@ -84,11 +104,13 @@ class StableHand:
         """Esquece tudo e relê do zero: o próximo 9 estável trava."""
         self._score.clear()
         self._last_candidate = ()
+        self._last_live = []
         self._stable = 0
         self._locked = []
 
     def reset(self):
         self._score.clear()
         self._last_candidate = ()
+        self._last_live = []
         self._stable = 0
         self._locked = []

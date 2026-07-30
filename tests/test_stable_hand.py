@@ -81,6 +81,28 @@ def test_twins_two_of_same_code():
     assert sorted(sh.cards) == sorted(hand)   # duas 7H preservadas
 
 
+def test_lock_keeps_the_left_to_right_order():
+    """A ordem entregue pelo FanReader (esquerda -> direita) tem de sobreviver.
+
+    Antes o candidato saía de `sorted(counts)`, ou seja, em ordem alfabética
+    de código — a mão travada aparecia embaralhada em relação ao leque.
+    """
+    sh = StableHand(hand_size=5, lock_frames=6)
+    mao = ["QS", "2H", "KD", "AC", "7S"]     # fora de ordem alfabética
+    feed(sh, mao, 12)
+    assert sh.cards == mao
+
+
+def test_reorder_does_not_reset_the_stability_count():
+    # tremor troca duas cartas de lugar: e a MESMA mao, nao pode atrasar a trava
+    sh = StableHand(hand_size=4, lock_frames=6)
+    a = ["AS", "2H", "3D", "4C"]
+    b = ["2H", "AS", "3D", "4C"]
+    for i in range(8):
+        sh.update(a if i % 2 else b)
+    assert sorted(sh.cards) == sorted(a)
+
+
 def test_reset_clears_lock():
     sh = StableHand(hand_size=9, lock_frames=12)
     feed(sh, NINE, 20)

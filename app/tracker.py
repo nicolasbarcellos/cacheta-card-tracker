@@ -1,9 +1,7 @@
 from dataclasses import dataclass
 
-from app.cards import RANKS, SUITS, Card
+from app.cards import Card
 from app.config import config
-
-_SUIT_ORDER = list(SUITS)
 
 
 @dataclass
@@ -51,23 +49,29 @@ class GameTracker:
         self.on_change()
 
     def set_hand_display(self, cards: list[Card]):
-        """Atualiza a mão exibida (decisão de quem entra/sai é do HandView)."""
+        """Atualiza a mão exibida PRESERVANDO a ordem recebida.
+
+        A ordem vem do FanReader (vagas da esquerda para a direita) e é a
+        ordem física do leque na mão do jogador — é isso que o overlay e o
+        painel devem mostrar. Antes daqui saía ordenado por naipe e valor, o
+        que embaralhava a mão em relação ao que o jogador estava segurando.
+        """
         if self.paused:
             return
-        as_list = sorted(cards, key=lambda c: (_SUIT_ORDER.index(c.suit),
-                                               RANKS.index(c.rank)))
+        as_list = list(cards)
         if as_list != self.hand_view:
             self.hand_view = as_list
             self.on_change()
 
     def correct_hand_card(self, index: int, card: Card) -> bool:
-        """Corrige manualmente uma carta da mão travada (clique no painel)."""
+        """Corrige manualmente uma carta da mão travada (clique no painel).
+
+        Troca no lugar: corrigir uma carta não pode reposicionar as outras,
+        senão o painel deixa de corresponder ao leque na mão.
+        """
         if not 0 <= index < len(self.hand_view):
             return False
         self.hand_view[index] = card
-        self.hand_view = sorted(self.hand_view,
-                                key=lambda c: (_SUIT_ORDER.index(c.suit),
-                                               RANKS.index(c.rank)))
         self.on_change()
         return True
 
