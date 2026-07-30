@@ -20,14 +20,14 @@ def make_filters(stable_frames: int):
 
 
 def log_lock(hand_view, hand_lock):
-    """Imprime o que o leitor viu no momento em que travou a mão.
+    """Imprime o que o leitor viu quando a mão exibida mudou.
 
-    A trava acontece uma vez por mão, então isso não polui a saída — e é o
-    único jeito de saber, depois do fato, POR QUE uma carta saiu errada:
-    rótulo repetido em posições distintas (o modelo leu duas cartas como a
-    mesma) x duas vagas no mesmo lugar (o casamento por posição se perdeu).
+    Só imprime na mudança, então não polui a saída — e é o único jeito de
+    saber, depois do fato, POR QUE uma carta saiu errada: rótulo repetido em
+    posições distintas (o modelo leu duas cartas como a mesma) x duas vagas
+    no mesmo lugar (o casamento por posição se perdeu).
     """
-    print(f"\n=== mão travada: {' '.join(hand_lock.cards)}", flush=True)
+    print(f"\n=== mão do jogador: {' '.join(hand_lock.cards)}", flush=True)
     for i, s in enumerate(hand_view.slots_debug()):
         top = "  ".join(f"{code}={peso}" for code, peso in s["top"])
         print(f"  vaga {i}: x={s['x']:4d} y={s['y']:4d} "
@@ -77,7 +77,10 @@ def main():
                           window=config.fan_window,
                           min_appear=config.fan_min_appear,
                           expire=config.fan_expire,
-                          max_slots=config.hand_size)
+                          # +1: a mão passa por 10 cartas no instante da
+                          # compra e o jogador espera ver as 10. O teto ainda
+                          # existe para matar vaga espúria — só subiu um.
+                          max_slots=config.hand_size + 1)
     hand_lock = StableHand(hand_size=config.hand_size,
                            lock_frames=config.lock_frames)
     annotated: dict = {}

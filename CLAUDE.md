@@ -65,10 +65,17 @@ Não unifique os dois: eles têm requisitos opostos (segurar × reagir).
    maioria simples o errado venceria. Teto de vagas = `hand_size`: vaga sobrando é espúria, e o
    corte ordena por `misses` antes de peso (depois de o leque se mover, a vaga velha ainda é
    "forte" mas está ausente — quem tem de ganhar é a nova).
-3. `StableHand` (`app/stable_hand.py`) — score de presença por *instância*; quando `hand_size`
-   cartas ficam estáveis por `lock_frames`, **trava e segura**. Não re-trava sozinho nem vendo
-   outro conjunto estável: só `force_relock()` (botão "Reler mão" → `/api/relock`) ou `reset()`
-   (nova rodada). Isso é intencional — numa live, overlay que oscila é pior que overlay defasado.
+3. `StableHand` (`app/stable_hand.py`) — score de presença por *instância*; **acompanha** a mão:
+   qualquer conjunto que fique estável por `lock_frames` substitui o exibido, automaticamente e
+   de **qualquer tamanho**. O `hand_size` não é exigido — a mão passa por 10 cartas no instante
+   da compra e o jogador espera ver as 10. `force_relock()` (botão "Reler mão") virou só um
+   reset manual.
+
+   Até 2026-07-30 ele **travava** a primeira mão de exatamente 9 e segurava até o botão, para o
+   overlay nunca oscilar numa live. Trocado a pedido do usuário: o custo era clicar a cada carta
+   comprada e conviver com mão exibida velha. A estabilidade agora vem só da histerese — se a
+   exibição ficar inquieta demais numa gravação, o ajuste é aumentar `lock_frames`, não voltar
+   ao botão. O teto de vagas do `FanReader` acompanhou: `hand_size + 1`.
 
 Invariante em todas as camadas: **frame sem nenhuma detecção significa "mão fora do quadro" e
 congela o estado**, não zera. Só ausência *relativa* (outras cartas visíveis, esta não) expira.

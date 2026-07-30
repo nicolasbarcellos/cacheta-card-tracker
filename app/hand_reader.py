@@ -49,6 +49,7 @@ class FanReader:
         self.max_shift = max_shift      # movimento maior que isso é implausível
         self._slots: list[dict] = []
         self._displayed: list[str] = []
+        self._empty = 0                 # frames seguidos sem NENHUMA detecção
 
     def _match(self, cx, cy):
         best, best_d = None, self.match_dist
@@ -101,9 +102,22 @@ class FanReader:
 
     def update(self, detections) -> bool:
         """detections: objetos com .card.code, .confidence e .box (x1,y1,x2,y2).
-        Um frame sem detecções (mão fora) NÃO expira nada — congela."""
+
+        Frame sem NENHUMA detecção é ambíguo: pode ser a mão saindo do quadro
+        ou o modelo falhando por um instante. Segura por `expire` frames (a
+        mesma folga usada para a vaga individual) e, se continuar vazio, a mão
+        some — o jogador que abaixou as cartas espera ver zero, não a mão
+        anterior congelada para sempre.
+        """
         if not detections:
-            return False
+            self._empty += 1
+            if self._empty < self.expire or not (self._slots or self._displayed):
+                return False
+            self._slots.clear()
+            mudou = self._displayed != []
+            self._displayed = []
+            return mudou
+        self._empty = 0
 
         centers = [((d.box[0] + d.box[2]) / 2, (d.box[1] + d.box[3]) / 2)
                    for d in detections]
@@ -200,3 +214,4 @@ class FanReader:
     def reset(self):
         self._slots.clear()
         self._displayed = []
+        self._empty = 0

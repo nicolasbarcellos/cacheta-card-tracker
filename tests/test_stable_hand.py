@@ -36,14 +36,38 @@ def test_brief_dropout_does_not_unlock():
     assert sorted(sh.cards) == sorted(NINE)  # segura
 
 
-def test_does_not_auto_relock_holds_first_lock():
-    # trava uma vez e segura: mesmo vendo um 9 diferente estável, NÃO troca
+def test_follows_a_new_stable_hand_without_a_button():
+    # acompanha sozinho: um conjunto diferente e estavel substitui o exibido
     sh = StableHand(hand_size=9, lock_frames=12)
     feed(sh, NINE, 20)
-    locked = sorted(sh.cards)
     new = [c for c in NINE if c != "QS"] + ["KH"]
-    feed(sh, new, 40)
-    assert sorted(sh.cards) == locked          # segurou a 1ª mão
+    feed(sh, new, 20)
+    assert sorted(sh.cards) == sorted(new)
+
+
+def test_follows_the_tenth_card_of_a_draw():
+    """O caso da compra: 9 na mao, o jogador puxa uma e ficam 10.
+
+    A exibicao tem de mostrar as 10 sozinha. Antes exigia exatamente
+    hand_size, entao a decima carta era invisivel ate alguem clicar em
+    "Reler mao" - e nem assim, porque o clique tambem so aceitava 9.
+    """
+    sh = StableHand(hand_size=9, lock_frames=12)
+    feed(sh, NINE, 20)
+    assert len(sh.cards) == 9
+    dez = NINE + ["KH"]
+    feed(sh, dez, 20)
+    assert len(sh.cards) == 10
+    assert sorted(sh.cards) == sorted(dez)
+
+
+def test_back_to_nine_after_the_discard():
+    # e depois do descarte volta a 9, tambem sozinho
+    sh = StableHand(hand_size=9, lock_frames=12)
+    feed(sh, NINE + ["KH"], 25)
+    assert len(sh.cards) == 10
+    feed(sh, NINE, 25)
+    assert sorted(sh.cards) == sorted(NINE)
 
 
 def test_relock_after_button_picks_new_hand():
@@ -101,6 +125,15 @@ def test_reorder_does_not_reset_the_stability_count():
     for i in range(8):
         sh.update(a if i % 2 else b)
     assert sorted(sh.cards) == sorted(a)
+
+
+def test_empties_when_the_hand_leaves_for_good():
+    # cartas fora do quadro por tempo suficiente: a mao exibida zera sozinha
+    sh = StableHand(hand_size=9, lock_frames=12)
+    feed(sh, NINE, 20)
+    assert len(sh.cards) == 9
+    feed(sh, [], 40)
+    assert sh.cards == []
 
 
 def test_reset_clears_lock():

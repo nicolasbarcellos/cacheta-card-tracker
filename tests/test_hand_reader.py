@@ -70,12 +70,34 @@ def test_twins_distinct_positions_both_shown():
     assert r.cards == ["7H", "7H"]
 
 
-def test_lowered_hand_freezes():
-    r = FanReader(min_appear=2)
+def test_brief_absence_freezes():
+    # o modelo falha por alguns frames: a mão exibida não pode piscar
+    r = FanReader(min_appear=2, expire=20)
     frame = fan(("AS", 100), ("2H", 200))
     r.update(frame); r.update(frame)
-    for _ in range(30):
-        assert r.update([]) is False    # sem detecções: congela
+    for _ in range(19):
+        assert r.update([]) is False
+    assert r.cards == ["AS", "2H"]
+
+
+def test_prolonged_absence_empties_the_hand():
+    # o jogador abaixou as cartas: a mão tem de sumir, não ficar congelada
+    r = FanReader(min_appear=2, expire=20)
+    frame = fan(("AS", 100), ("2H", 200))
+    r.update(frame); r.update(frame)
+    mudou = any(r.update([]) for _ in range(25))
+    assert mudou is True
+    assert r.cards == []
+
+
+def test_hand_returning_after_emptying_is_read_again():
+    r = FanReader(min_appear=2, expire=20)
+    frame = fan(("AS", 100), ("2H", 200))
+    r.update(frame); r.update(frame)
+    for _ in range(25):
+        r.update([])
+    assert r.cards == []
+    r.update(frame); r.update(frame)
     assert r.cards == ["AS", "2H"]
 
 
