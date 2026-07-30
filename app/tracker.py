@@ -64,7 +64,7 @@ class GameTracker:
             self.on_change()
 
     def correct_hand_card(self, index: int, card: Card) -> bool:
-        """Corrige manualmente uma carta da mão travada (clique no painel).
+        """Corrige manualmente uma carta da mão do jogador (clique no painel).
 
         Troca no lugar: corrigir uma carta não pode reposicionar as outras,
         senão o painel deixa de corresponder ao leque na mão.

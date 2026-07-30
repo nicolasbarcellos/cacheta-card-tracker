@@ -116,7 +116,8 @@ def create_app(tracker: GameTracker,
 
     @app.post("/api/relock")
     async def relock():
-        # re-lê a mão travada (após descartar/comprar): o próximo 9 estável trava
+        # relê a mão do zero. A exibição já acompanha sozinha; isto é o reset
+        # manual, para quando a leitura estiver presa em algo errado.
         if on_relock:
             on_relock()
         return {"ok": True}
