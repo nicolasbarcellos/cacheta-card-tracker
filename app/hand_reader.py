@@ -16,6 +16,12 @@ class FanReader:
     - preserva gêmeas (posições distintas = vagas distintas);
     - some quando a mão abaixa (vagas expiram por ausência).
 
+    A "posição estável" só existe depois de descontar o movimento da mão: o
+    leque inteiro translada junto a cada tremor. `_estimate_shift` mede essa
+    translação comum e desloca as vagas antes de casar — sem isso, o jitter
+    medido (66px p95) supera o raio de casamento e a mesma carta cria vaga
+    nova a cada frame.
+
     `max_slots` (= tamanho da mão) é o teto de vagas exibidas. Ele existe
     porque a mão tem um número conhecido de cartas: se sobrar vaga, alguma é
     espúria. Sem o teto era preciso um `expire` curto para matar vaga órfã
@@ -28,12 +34,19 @@ class FanReader:
 
     def __init__(self, match_dist: float = 45.0, window: int = 25,
                  min_appear: int = 6, expire: int = 20,
-                 max_slots: int | None = None):
+                 max_slots: int | None = None,
+                 shift_tol: float = 20.0, max_shift: float = 200.0):
         self.match_dist = match_dist
         self.window = window
         self.min_appear = min_appear
         self.expire = expire
         self.max_slots = max_slots
+        # compensação de movimento: `shift_tol` é o quanto dois deslocamentos
+        # podem diferir e ainda votarem juntos (folga para o ruído por carta);
+        # precisa ficar bem abaixo do espaçamento entre cartas, senão o
+        # deslocamento "carta i -> vaga i+1" entra no mesmo voto.
+        self.shift_tol = shift_tol
+        self.max_shift = max_shift      # movimento maior que isso é implausível
         self._slots: list[dict] = []
         self._displayed: list[str] = []
 
@@ -45,11 +58,60 @@ class FanReader:
                 best, best_d = s, d
         return best
 
+    def _estimate_shift(self, centers) -> tuple[float, float]:
+        """Translação COMUM do leque desde o frame anterior.
+
+        A mão move o leque inteiro junto: as cartas não se deslocam umas em
+        relação às outras. Medido no setup real, o tremor chega a 66px (p95)
+        enquanto as cartas vizinhas ficam a 69px (p05) — sem compensar, a
+        mesma carta sai da própria vaga e cria vaga nova a cada tremor.
+
+        Estimativa por VOTAÇÃO, não por média dos pares mais próximos: com
+        deslocamento maior que meia distância entre cartas, o vizinho mais
+        próximo já é a carta errada e a média sairia viciada. Aqui cada par
+        (detecção, vaga) propõe um deslocamento; o verdadeiro é proposto uma
+        vez por carta casada, os espúrios se espalham. Vence quem tem mais
+        votos dentro de `shift_tol`, e só se houver suporte de metade das
+        vagas — senão é ruído e não movimento, e não se mexe em nada.
+        """
+        if not self._slots or not centers:
+            return 0.0, 0.0
+        offsets = [(cx - s["x"], cy - s["y"])
+                   for cx, cy in centers for s in self._slots]
+        offsets = [(ox, oy) for ox, oy in offsets
+                   if abs(ox) <= self.max_shift and abs(oy) <= self.max_shift]
+        if not offsets:
+            return 0.0, 0.0
+
+        best, best_n = (0.0, 0.0), 0
+        for ox, oy in offsets:
+            n = sum(1 for px, py in offsets
+                    if abs(px - ox) <= self.shift_tol
+                    and abs(py - oy) <= self.shift_tol)
+            if n > best_n:
+                best, best_n = (ox, oy), n
+        if best_n < max(2, len(self._slots) // 2):
+            return 0.0, 0.0
+
+        inliers = [(ox, oy) for ox, oy in offsets
+                   if abs(ox - best[0]) <= self.shift_tol
+                   and abs(oy - best[1]) <= self.shift_tol]
+        return (sum(o[0] for o in inliers) / len(inliers),
+                sum(o[1] for o in inliers) / len(inliers))
+
     def update(self, detections) -> bool:
         """detections: objetos com .card.code, .confidence e .box (x1,y1,x2,y2).
         Um frame sem detecções (mão fora) NÃO expira nada — congela."""
         if not detections:
             return False
+
+        centers = [((d.box[0] + d.box[2]) / 2, (d.box[1] + d.box[3]) / 2)
+                   for d in detections]
+        shift_x, shift_y = self._estimate_shift(centers)
+        if shift_x or shift_y:
+            for s in self._slots:
+                s["x"] += shift_x
+                s["y"] += shift_y
 
         seen = set()
         for d in detections:
@@ -110,6 +172,30 @@ class FanReader:
     @property
     def cards(self) -> list[str]:
         return list(self._displayed)
+
+    def slots_debug(self) -> list[dict]:
+        """Estado das vagas para diagnóstico (usado no log da trava).
+
+        Distingue as duas causas que produzem a MESMA mão errada: rótulo
+        repetido em vagas de posições diferentes (o modelo leu duas cartas
+        como a mesma) x vaga duplicada no mesmo lugar (o casamento por
+        posição se perdeu). Sem isso, só o resultado final é visível e as
+        duas hipóteses ficam indistinguíveis.
+        """
+        out = []
+        for s in sorted(self._slots, key=lambda s: s["x"]):
+            totals: Counter = Counter()
+            for code, confidence in s["votes"]:
+                totals[code] += confidence
+            out.append({
+                "x": round(s["x"]),
+                "y": round(s["y"]),
+                "n": len(s["votes"]),
+                "misses": s["misses"],
+                "top": [(code, round(peso, 2))
+                        for code, peso in totals.most_common(3)],
+            })
+        return out
 
     def reset(self):
         self._slots.clear()

@@ -19,6 +19,21 @@ def make_filters(stable_frames: int):
             "hand": StabilityFilter(stable_frames)}
 
 
+def log_lock(hand_view, hand_lock):
+    """Imprime o que o leitor viu no momento em que travou a mão.
+
+    A trava acontece uma vez por mão, então isso não polui a saída — e é o
+    único jeito de saber, depois do fato, POR QUE uma carta saiu errada:
+    rótulo repetido em posições distintas (o modelo leu duas cartas como a
+    mesma) x duas vagas no mesmo lugar (o casamento por posição se perdeu).
+    """
+    print(f"\n=== mão travada: {' '.join(hand_lock.cards)}", flush=True)
+    for i, s in enumerate(hand_view.slots_debug()):
+        top = "  ".join(f"{code}={peso}" for code, peso in s["top"])
+        print(f"  vaga {i}: x={s['x']:4d} y={s['y']:4d} "
+              f"n={s['n']:3d} miss={s['misses']:2d}  {top}", flush=True)
+
+
 def process_frame(detections_discard, detections_hand, filters, tracker,
                   hand_view, hand_lock):
     """Um passo do laço de visão. Puro: recebe detecções, atualiza o tracker."""
@@ -32,6 +47,7 @@ def process_frame(detections_discard, detections_hand, filters, tracker,
     hand_view.update(hand_instances(detections_hand))
     if hand_lock.update(hand_view.cards):
         tracker.set_hand_display([Card.from_label(c) for c in hand_lock.cards])
+        log_lock(hand_view, hand_lock)
     codes = hand_codes(detections_hand)
     stable_hand = filters["hand"].update(codes if codes else None)
     if stable_hand:
