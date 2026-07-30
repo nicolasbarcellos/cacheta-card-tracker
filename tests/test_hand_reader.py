@@ -119,6 +119,54 @@ def test_max_slots_drops_the_weakest_when_all_present():
     assert r.cards == ["AS", "2H"]
 
 
+def test_fan_translation_does_not_duplicate_slots():
+    """A mão desloca o leque INTEIRO: as vagas acompanham em vez de duplicar.
+
+    Sem compensação, um salto maior que `match_dist` cria vaga nova para cada
+    carta e as antigas ainda vivem até `expire` — a mão aparecia com o dobro
+    de cartas. Medido no setup real, o tremor da mão (66px p95) supera com
+    folga o raio de casamento, então isso acontecia o tempo todo.
+    """
+    r = FanReader(match_dist=30, min_appear=2, expire=24)
+    for _ in range(6):
+        r.update(fan(("AS", 100), ("2H", 200), ("3D", 300)))
+    assert r.cards == ["AS", "2H", "3D"]
+    for _ in range(4):                      # leque salta 80px (> match_dist)
+        r.update(fan(("AS", 180), ("2H", 280), ("3D", 380)))
+    assert r.cards == ["AS", "2H", "3D"]    # 3 vagas, não 6
+
+
+def test_translation_preserves_the_accumulated_votes():
+    # a vaga que se desloca continua sendo a MESMA vaga: leva os votos junto
+    r = FanReader(match_dist=30, min_appear=5, expire=24)
+    for _ in range(5):
+        r.update(fan(("AS", 100), ("2H", 200)))
+    assert r.cards == ["AS", "2H"]
+    r.update(fan(("AS", 190), ("2H", 290)))   # salto de 90px num frame só
+    assert r.cards == ["AS", "2H"]            # confirmadas na hora, sem re-acumular
+
+
+def test_stray_detection_does_not_drag_the_slots():
+    # um fantasma longe não pode arrastar o leque parado
+    r = FanReader(match_dist=30, min_appear=2, expire=24)
+    for _ in range(6):
+        r.update(fan(("AS", 100), ("2H", 200), ("3D", 300)))
+    for _ in range(3):
+        r.update(fan(("AS", 100), ("2H", 200), ("3D", 300), ("KC", 900)))
+    assert r.cards[:3] == ["AS", "2H", "3D"]
+
+
+def test_shift_needs_support_from_several_slots():
+    # uma deteccao isolada nao e evidencia de que o leque andou
+    r = FanReader(match_dist=30, min_appear=2, expire=24)
+    for _ in range(6):
+        r.update(fan(("AS", 100), ("2H", 200), ("3D", 300), ("4C", 400)))
+    r.update(fan(("KC", 150)))              # frame ruim: 1 detecção só
+    for _ in range(3):
+        r.update(fan(("AS", 100), ("2H", 200), ("3D", 300), ("4C", 400)))
+    assert r.cards == ["AS", "2H", "3D", "4C"]
+
+
 def test_reset_clears():
     r = FanReader(min_appear=1)
     r.update(fan(("AS", 100)))
