@@ -14,6 +14,7 @@ Saída: training/datasets/synthetic/{images,labels}/
 """
 import random
 import sys
+from collections import Counter
 from pathlib import Path
 
 import cv2
@@ -34,6 +35,11 @@ ROOT = Path(__file__).resolve().parent
 TEMPLATES = ROOT / "templates"
 BACKGROUNDS = ROOT / "backgrounds"
 OUT = ROOT / "datasets" / "synthetic"
+
+# Por que cada carta desenhada NÃO virou rótulo. Serve para ajustar a
+# geometria do leque: se "coberto" domina, as cartas estão empilhadas demais e
+# o modelo aprende com 3 índices em vez de 9.
+DROP_STATS: Counter = Counter()
 
 
 def reset_out():
@@ -177,17 +183,52 @@ def compose_fan(templates, bgs):
     codes = random.sample(list(templates), min(n, len(templates)))
     n = len(codes)
 
-    scale = random.uniform(0.55, 0.9)
-    total_spread = random.uniform(28, 52)      # graus do leque inteiro
-    step = random.uniform(0.10, 0.20) * TPL_W * scale  # passo horizontal (apertado)
-    cx = random.uniform(CANVAS_W * 0.35, CANVAS_W * 0.6)
-    cy = random.uniform(CANVAS_H * 0.5, CANVAS_H * 0.72)
-    pivot = (cx, cy + TPL_H * scale * random.uniform(0.75, 1.2))
+    # ABERTURA: medido no setup real, um leque de 9 cartas segurado na mão
+    # abre 150-180 graus, não 28-52. Com a faixa antiga o modelo só via cartas
+    # quase em pé; ao vivo, as das pontas chegavam deitadas ou de cabeça para
+    # baixo e simplesmente não eram detectadas — 3 detecções para 9 cartas.
+    # A faixa cobre o leque fechado E o aberto, porque os dois acontecem.
+    total_spread = random.uniform(25, 150)
+    frac_spread = (total_spread - 25) / 125
+
+    # ESCALA: o leque tem de PREENCHER o quadro, como preenche ao vivo. Medido
+    # na câmera real, a carta ocupa ~16% da largura do frame, o que dá scale
+    # ~0.8 neste canvas. Encolher o leque para ele "caber" seria afastar ainda
+    # mais o sintético do real — quem lida com o que passa da borda é o recorte
+    # do rótulo, mais abaixo.
+    scale = random.uniform(0.55, 1.0)
+
+    # PASSO: é o deslocamento entre cartas que EXPÕE o índice. O índice tem
+    # ~44px de largura no molde, ou seja ~0.18 da largura da carta — com passo
+    # menor que isso a carta seguinte cobre o índice da anterior e a imagem sai
+    # sem rótulo. Medido: com passo de 0.03-0.06, 60% dos índices ficavam
+    # cobertos e cada imagem rendia 3 rótulos em vez de 9.
+    #
+    # No leque ABERTO a rotação já afasta os topos, então o passo pode ser
+    # menor; no FECHADO ele é o único mecanismo de exposição.
+    step = (random.uniform(0.20, 0.32) * (1 - 0.45 * frac_spread)
+            * TPL_W * scale)
+
+    # INCLINAÇÃO do leque inteiro: a mão raramente segura na vertical exata.
+    tilt = random.uniform(-20, 20)
+
+    # GEOMETRIA: o punho é o pivô e fica na BORDA DE BAIXO do quadro; as cartas
+    # irradiam para cima. Antes o pivô caía solto no meio do canvas e, com
+    # abertura grande, as cartas das pontas giravam para baixo e saíam pelo
+    # rodapé — o corner ficava coberto ou fora, e a imagem rendia 3-4 rótulos
+    # em vez de 9. Ancorar o pivô embaixo é o que faz os 9 índices aparecerem,
+    # como aparecem na mão de verdade.
+    cx = random.uniform(CANVAS_W * 0.35, CANVAS_W * 0.65)
+    pivot_y = CANVAS_H * random.uniform(0.75, 0.95)
+    raio = TPL_H * scale * random.uniform(0.5, 0.9)   # punho -> centro da carta
+    cy = pivot_y - raio
+    pivot = (cx, pivot_y)
 
     mats = []
     for i in range(n):
         frac = i / max(n - 1, 1)
-        angle = -total_spread / 2 + total_spread * frac + random.uniform(-1, 1)
+        angle = (-total_spread / 2 + total_spread * frac + tilt
+                 + random.uniform(-1, 1))
         base = (cx - step * (n - 1) / 2 + step * i, cy)
         mats.append(perspective_matrix(scale, base, -angle))
 
@@ -224,16 +265,27 @@ def compose_fan(templates, bgs):
         # A caixa vem medida do molde (detect_corner_tl), não é fixa.
         x1, y1, x2, y2, pts = bbox_of(templates[code][1], mats[i])
         if not visible(pts, range(i + 1, n)):
+            DROP_STATS["coberto"] += 1
             continue
-        if x1 < 0 or y1 < 0 or x2 >= CANVAS_W or y2 >= CANVAS_H:
+        # RECORTA na borda em vez de descartar. Descartar era pior que perder
+        # a amostra: o índice continua VISÍVEL na imagem, e uma região visível
+        # sem rótulo ensina o modelo que aquele padrão é fundo — exatamente o
+        # padrão que ele precisa detectar. Com o leque aberto, que é o caso
+        # real, muitas cartas encostam na borda.
+        vx1, vy1 = max(x1, 0.0), max(y1, 0.0)
+        vx2, vy2 = min(x2, CANVAS_W - 1.0), min(y2, CANVAS_H - 1.0)
+        if (vx2 - vx1) < 8 or (vy2 - vy1) < 12:
+            DROP_STATS["pequeno"] += 1
             continue
-        if (x2 - x1) < 8 or (y2 - y1) < 12:
-            continue
+        if (vx2 - vx1) * (vy2 - vy1) < 0.5 * (x2 - x1) * (y2 - y1):
+            DROP_STATS["fora do quadro"] += 1
+            continue          # mais da metade fora do quadro: já não é o índice
+        DROP_STATS["rotulado"] += 1
         labels.append(f"{NAME_TO_ID[code]} "
-                      f"{(x1 + x2) / 2 / CANVAS_W:.6f} "
-                      f"{(y1 + y2) / 2 / CANVAS_H:.6f} "
-                      f"{(x2 - x1) / CANVAS_W:.6f} "
-                      f"{(y2 - y1) / CANVAS_H:.6f}")
+                      f"{(vx1 + vx2) / 2 / CANVAS_W:.6f} "
+                      f"{(vy1 + vy2) / 2 / CANVAS_H:.6f} "
+                      f"{(vx2 - vx1) / CANVAS_W:.6f} "
+                      f"{(vy2 - vy1) / CANVAS_H:.6f}")
 
     canvas = np.clip(canvas, 0, 255).astype(np.uint8)
     # realismo final: desfoque de movimento e granulado
