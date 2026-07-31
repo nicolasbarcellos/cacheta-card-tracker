@@ -215,6 +215,43 @@ def test_a_real_change_still_wins_when_sustained():
     assert r.cards == ["4S"]
 
 
+def test_closing_the_fan_does_not_scramble_the_hand():
+    """Fechar o leque esconde as cartas atras da primeira - e oclusao.
+
+    Sem congelar, as 8 vagas ocultas expiravam; ao reabrir nasciam sem
+    historico de votos e o leitor podia estabelecer rotulo errado do zero,
+    "esquecendo" o que ja tinha acertado.
+    """
+    r = FanReader(min_appear=3, expire=20, window=30)
+    aberto = fan(("AS", 100), ("2H", 200), ("3D", 300), ("4C", 400),
+                 ("5S", 500))
+    for _ in range(15):
+        r.update(aberto)
+    assert r.cards == ["AS", "2H", "3D", "4C", "5S"]
+
+    fechado = fan(("AS", 100))          # so a primeira carta aparece
+    for _ in range(60):                 # bem mais que `expire`
+        r.update(fechado)
+    assert r.cards == ["AS", "2H", "3D", "4C", "5S"]   # segurou
+
+    for _ in range(3):                  # reabriu: volta na hora
+        r.update(aberto)
+    assert r.cards == ["AS", "2H", "3D", "4C", "5S"]
+
+
+def test_one_card_leaving_is_still_a_real_change():
+    # a regra do congelamento nao pode engolir a jogada legitima
+    r = FanReader(min_appear=3, expire=6, window=30)
+    cinco = fan(("AS", 100), ("2H", 200), ("3D", 300), ("4C", 400),
+                ("5S", 500))
+    for _ in range(15):
+        r.update(cinco)
+    quatro = fan(("AS", 100), ("2H", 200), ("3D", 300), ("4C", 400))
+    for _ in range(15):
+        r.update(quatro)
+    assert r.cards == ["AS", "2H", "3D", "4C"]
+
+
 def test_reset_clears():
     r = FanReader(min_appear=1)
     r.update(fan(("AS", 100)))

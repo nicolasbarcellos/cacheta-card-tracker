@@ -127,6 +127,18 @@ class FanReader:
             return mudou
         self._empty = 0
 
+        # QUEDA BRUSCA = oclusão, não jogada. Na cacheta a mão muda de UMA
+        # carta por vez, então ver 1 carta onde havia 9 é o leque fechando (as
+        # outras ficam atrás da primeira) ou a mão passando na frente. Congela:
+        # não expira vaga e não mexe na exibição.
+        #
+        # Sem isso, fechar o leque expirava as 8 vagas ocultas, e ao reabrir
+        # elas nasciam sem histórico de votos — o leitor "esquecia" o que já
+        # tinha acertado e podia estabelecer rótulo errado do zero. Congelando,
+        # os votos acumulados sobrevivem e a leitura certa volta na hora.
+        if self._displayed and len(detections) < len(self._displayed) - 1:
+            return False
+
         centers = [((d.box[0] + d.box[2]) / 2, (d.box[1] + d.box[3]) / 2)
                    for d in detections]
         shift_x, shift_y = self._estimate_shift(centers)
