@@ -5,18 +5,11 @@ import uvicorn
 from app.capture import CameraStream
 from app.cards import Card
 from app.config import config
-from app.detector import (CardDetector, draw_boxes, hand_codes,
-                          hand_instances, pick_top_card)
+from app.detector import CardDetector, draw_boxes, hand_instances
 from app.hand_reader import FanReader
 from app.server import create_app
-from app.stability import StabilityFilter
 from app.stable_hand import StableHand
 from app.tracker import GameTracker
-
-
-def make_filters(stable_frames: int):
-    return {"discard": StabilityFilter(stable_frames),
-            "hand": StabilityFilter(stable_frames)}
 
 
 def log_lock(hand_view, hand_lock):
@@ -34,45 +27,41 @@ def log_lock(hand_view, hand_lock):
               f"n={s['n']:3d} miss={s['misses']:2d}  {top}", flush=True)
 
 
-def process_frame(detections_discard, detections_hand, filters, tracker,
-                  hand_view, hand_lock):
-    """Um passo do laço de visão. Puro: recebe detecções, atualiza o tracker."""
-    top = pick_top_card(detections_discard)
-    stable_top = filters["discard"].update(top.card.code if top else None)
-    if stable_top:
-        tracker.on_stable_top_card(Card.from_label(stable_top),
-                                   confidence=top.confidence if top else 1.0)
+def process_frame(detections_hand, tracker, hand_view, hand_lock):
+    """Um passo do laço de visão. Puro: recebe detecções, atualiza o tracker.
 
-    # FanReader = leitura ao vivo (votada por posição); StableHand = trava
+    Compra e descarte saem os DOIS da câmera da mão, pela mudança do leque:
+    cresceu uma carta = compra, encolheu uma = descarte. A câmera do monte não
+    gera evento — se gerasse, o descarte sairia duplicado (uma vez pela mão,
+    outra pelo monte).
+    """
+    # FanReader = leitura ao vivo (votada por posição); StableHand = histerese
     hand_view.update(hand_instances(detections_hand))
     if hand_lock.update(hand_view.cards):
-        tracker.set_hand_display([Card.from_label(c) for c in hand_lock.cards])
+        cards = [Card.from_label(c) for c in hand_lock.cards]
+        tracker.set_hand_display(cards)
+        tracker.on_hand_changed(cards)
         log_lock(hand_view, hand_lock)
-    codes = hand_codes(detections_hand)
-    stable_hand = filters["hand"].update(codes if codes else None)
-    if stable_hand:
-        tracker.on_stable_hand(frozenset(
-            Card.from_label(c) for c in stable_hand))
 
 
-def vision_loop(cams, detector, filters, tracker, annotated, running,
+def vision_loop(cams, detector, tracker, annotated, running,
                 hand_view, hand_lock):
     while running.is_set():
         detections = {"discard": [], "hand": []}
         for name in detections:
             frame = cams[name].read()
             if frame is None:
-                continue  # câmera ainda aquecendo; lista vazia vira None no filtro
+                continue  # câmera ainda aquecendo
             dets = detector.detect(frame)
             detections[name] = dets
             annotated[name] = draw_boxes(frame, dets)
-        process_frame(detections["discard"], detections["hand"],
-                      filters, tracker, hand_view, hand_lock)
+        # a câmera do monte continua sendo lida e anotada para o preview do
+        # painel, mas não alimenta mais evento nenhum
+        process_frame(detections["hand"], tracker, hand_view, hand_lock)
 
 
 def main():
     tracker = GameTracker(hand_size=config.hand_size)
-    filters = make_filters(config.stable_frames)
     hand_view = FanReader(match_dist=config.fan_match_dist,
                           window=config.fan_window,
                           min_appear=config.fan_min_appear,
@@ -80,7 +69,8 @@ def main():
                           # +1: a mão passa por 10 cartas no instante da
                           # compra e o jogador espera ver as 10. O teto ainda
                           # existe para matar vaga espúria — só subiu um.
-                          max_slots=config.hand_size + 1)
+                          max_slots=config.hand_size + 1,
+                          win_margin=config.fan_win_margin)
     hand_lock = StableHand(hand_size=config.hand_size,
                            lock_frames=config.lock_frames)
     annotated: dict = {}
@@ -95,8 +85,6 @@ def main():
                             agnostic_nms=config.agnostic_nms)
 
     def reset_filters():
-        filters["discard"].reset()
-        filters["hand"].reset()
         hand_view.reset()
         hand_lock.reset()
 
@@ -108,7 +96,7 @@ def main():
     running.set()
     thread = threading.Thread(
         target=vision_loop,
-        args=(cams, detector, filters, tracker, annotated, running,
+        args=(cams, detector, tracker, annotated, running,
               hand_view, hand_lock),
         daemon=True)
     thread.start()

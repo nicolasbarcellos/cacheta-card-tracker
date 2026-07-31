@@ -1,3 +1,4 @@
+from collections import Counter
 from dataclasses import dataclass
 
 from app.cards import Card
@@ -32,6 +33,7 @@ class GameTracker:
         self.events: list[Event] = []
         self._next_id = 1
         self._hand_ref: frozenset[Card] | None = None
+        self._hand_prev: Counter | None = None
         self._top_discard: Card | None = None
         self._discard_history: set[Card] = set()
         self.hand_view: list[Card] = []
@@ -74,6 +76,49 @@ class GameTracker:
         self.hand_view[index] = card
         self.on_change()
         return True
+
+    def on_hand_changed(self, cards: list[Card]):
+        """Deriva compra E descarte da mudança da mão do jogador.
+
+        Uma câmera só. A mão que CRESCE em uma carta é uma compra (a carta que
+        entrou); a que ENCOLHE em uma é um descarte (a que saiu). Não depende
+        de ver o monte, que é o que exigia a segunda câmera.
+
+        Só reage a mudança de exatamente UMA carta. Salto maior é leitura
+        instável, não jogada — e a mão indo a zero (jogador abaixou as cartas)
+        não pode virar nove descartes.
+        """
+        if self.paused:
+            return
+
+        if not cards:
+            # mão fora do quadro: esquece a referência; quando voltar, a
+            # primeira leitura vira a nova base sem gerar evento
+            self._hand_prev = None
+            return
+
+        atual: Counter = Counter(c.code for c in cards)
+        anterior = self._hand_prev
+        self._hand_prev = atual
+        if anterior is None:
+            return
+
+        entrou = atual - anterior
+        saiu = anterior - atual
+
+        if sum(entrou.values()) == 1 and not saiu:
+            card = Card.from_label(next(iter(entrou)))
+            source = "monte"
+            if card in self._discard_history:
+                source = "lixo"
+                self._discard_history.discard(card)
+            self._emit("draw", card, source=source)
+        elif sum(saiu.values()) == 1 and not entrou:
+            card = Card.from_label(next(iter(saiu)))
+            self._discard_history.add(card)
+            self._emit("discard", card)
+        # troca simultânea ou salto de várias cartas: leitura instável.
+        # A referência já foi atualizada; nenhum evento é emitido.
 
     def on_stable_hand(self, cards: frozenset[Card]):
         if self.paused or not cards:
@@ -137,6 +182,7 @@ class GameTracker:
     def new_round(self):
         self.events.clear()
         self._hand_ref = None
+        self._hand_prev = None
         self._top_discard = None
         self._discard_history.clear()
         self.hand_view = []
