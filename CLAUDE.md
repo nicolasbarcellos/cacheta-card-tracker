@@ -214,6 +214,35 @@ classes nomeadas `AS`/`10C`/`QH` (parseáveis por `Card.from_label`), sem coring
 nunca é rotulado no dataset sintético — é assim que o modelo aprende a não contar a mesma carta
 duas vezes.
 
+### O ciclo de pseudo-anotação não conserta o que o modelo erra
+
+`auto_annotate.py` rotula com o modelo atual e depende de revisão manual. Isso tem um
+limite **circular** e fatal: nas cartas que o modelo erra, o rótulo sai errado, a foto é
+apagada na revisão, e a carta nunca aprende. Foi por isso que a confusão A↔4 sobreviveu
+a duas rodadas de retreino.
+
+`capture_rotulado.py` quebra a circularidade: você informa a mão **na ordem da esquerda
+para a direita**, e cada detecção recebe o código da sua posição — o palpite do modelo é
+ignorado. O resultado é dado correto exatamente onde ele erra. Medido: em boa parte dos
+frames o modelo acertava só 5 de 9, e os 4 errados viraram rótulo correto.
+
+Guardas obrigatórias (alinhamento torto envenena o dataset inteiro): contagem exata de
+detecções, sem buraco no espaçamento entre cantos (buraco = carta não detectada, que
+desloca todos os rótulos seguintes) e maioria dos rótulos do modelo já batendo com a
+posição. **Sempre confira algumas imagens de `review/` antes de treinar** — verde é
+acerto do modelo, laranja é correção pela ordem.
+
+Capture ao menos **duas ordens diferentes** das mesmas cartas, senão o modelo pode
+associar posição a rótulo em vez de aprender o glifo.
+
+### Hipótese refutada: nitidez do frame não separa acerto de erro
+
+O erro A↔4 aparecia mais com a câmera balançando, o que sugeria filtrar frames borrados
+antes da detecção. **Medido e descartado**: variância do Laplaciano de 2121 (mediana) nos
+frames certos contra 2096 nos errados — 1% de diferença, distribuições sobrepostas.
+Cortar no p10 dos certos descartaria 17% dos erros e 10% dos acertos. Não é filtro, é
+moeda. Não reimplemente isso sem medir de novo num setup diferente.
+
 Fluxo local de fine-tuning (sem nuvem), detalhes em `training/README.md`:
 `capture_deck.py` → `generate_fans.py` → `capture_auto.py` → `auto_annotate.py` →
 **revisão manual** → `finetune_local.py`.
