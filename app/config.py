@@ -61,7 +61,16 @@ class Config:
     # Custo: uma troca de carta REAL demora ~22 frames (~1,5s) para aparecer,
     # porque a nova precisa empurrar a antiga para fora da janela de votos.
     fan_win_margin: float = 2.5
-    lock_frames: int = 12          # frames de 9 estável p/ TRAVAR a mão no overlay
+    # Frames com a MESMA leitura antes de trocar a mão exibida. Com 12 (~0,8s)
+    # uma leitura errada durante a organização das cartas na mão durava tempo
+    # suficiente para entrar — o jogador ainda estava acomodando o leque, com
+    # os dedos por cima do índice, e o sistema já aceitava.
+    #
+    # 30 (~2s) usa a estabilidade como sinal de "terminei de organizar": não dá
+    # para exigir 9 ou 10 cartas, porque nem sempre o leque está todo aberto,
+    # mas enquanto a mão se mexe a leitura muda o tempo todo e não estabiliza.
+    # Custo: compra e descarte demoram ~1,2s a mais para aparecer.
+    lock_frames: int = 30
     hand_size: int = 9
     server_host: str = "127.0.0.1"
     server_port: int = 8000
