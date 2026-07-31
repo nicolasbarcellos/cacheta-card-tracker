@@ -53,6 +53,27 @@ def reset_out():
 ALL_CODES = sorted(f"{r}{s}" for r in RANKS for s in SUITS)
 NAME_TO_ID = {c: i for i, c in enumerate(ALL_CODES)}
 
+# Ranks que o modelo mais erra, medidos em 1725 índices de validação:
+#   8 = 82,4%   5 = 86,7%   3 = 89,0%   A = 91,1%   (Q = 98,2% no outro extremo)
+# As confusões dominantes são entre eles — 5→3, A↔4, 8→6 — e a A↔4 sobrevive
+# ao vivo: medido na câmera, uma vaga do 4♦ acumulou A♦=16,1 contra 4D=7,1.
+# Sorteá-los com peso maior faz o treino gastar mais amostras onde erra.
+RANKS_FRACOS = {"A", "3", "4", "5", "8"}
+PESO_RANK_FRACO = 2.5
+
+
+def escolhe_codigos(templates, n):
+    """Sorteia n cartas distintas, com peso maior para os ranks fracos."""
+    pool = list(templates)
+    pesos = [PESO_RANK_FRACO if code[:-1] in RANKS_FRACOS else 1.0
+             for code in pool]
+    escolhidos = []
+    for _ in range(min(n, len(pool))):
+        i = random.choices(range(len(pool)), weights=pesos, k=1)[0]
+        escolhidos.append(pool.pop(i))
+        pesos.pop(i)
+    return escolhidos
+
 
 def detect_corner_tl(img):
     """Mede a caixa do índice (valor+naipe) do canto superior-esquerdo.
@@ -180,7 +201,7 @@ def bbox_of(corner, m):
 def compose_fan(templates, bgs):
     canvas = random_background(bgs).astype(np.float32)
     n = random.choice([6, 7, 8] + [9] * 10 + [10] * 3)
-    codes = random.sample(list(templates), min(n, len(templates)))
+    codes = escolhe_codigos(templates, n)
     n = len(codes)
 
     # ABERTURA: medido no setup real, um leque de 9 cartas segurado na mão
