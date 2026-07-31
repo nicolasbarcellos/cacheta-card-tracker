@@ -32,6 +32,9 @@
   #mao-atual { display: flex; flex-wrap: wrap; gap: 6px; min-height: 140px;
                background: #16213e; border-radius: 6px; padding: 8px; }
   #mao-atual img { width: 96px; border-radius: 5px; }
+  .lista { min-height: 56px; }
+  .vazio-lista { font-size: 13px; color: #667; padding: 8px;
+                 background: #16213e; border-radius: 6px; }
 </style>
 </head>
 <body>
@@ -52,8 +55,10 @@
     </div>
     <div class="rotulo">Mão do jogador (<span id="mao-count">0</span> cartas)</div>
     <div id="mao-atual"></div>
-    <div class="rotulo">Eventos</div>
-    <div id="eventos"></div>
+    <div class="rotulo">Compra</div>
+    <div id="compras" class="lista"></div>
+    <div class="rotulo">Descarte</div>
+    <div id="descartes" class="lista"></div>
   </div>
 </div>
 
@@ -111,6 +116,21 @@
     dlg.close();
   };
 
+  function linhaEvento(e) {
+    const detalhe = e.type === 'draw'
+      ? (e.source === 'lixo' ? 'do lixo' : 'do monte')
+      : 'descartada';
+    return `
+      <div class="evento ${e.confirmed ? '' : 'pendente'}">
+        <img src="/assets/cards/${e.card.asset}" alt="">
+        <div class="info">
+          <div class="tipo">${detalhe}${e.confirmed ? '' : ' — confirmar?'}</div>
+          ${e.card.display}
+        </div>
+        <button onclick="abrirCorrecao(${e.id})">corrigir</button>
+      </div>`;
+  }
+
   function renderEventos(state) {
     paused = state.paused;
     btnPause.textContent = paused ? 'Retomar detecção' : 'Pausar detecção';
@@ -121,17 +141,17 @@
       `<img src="/assets/cards/${c.asset}" title="${c.display} (clique p/ corrigir)"
             style="cursor:pointer" onclick="abrirCorrecaoMao(${i}, '${c.code}')">`
       ).join('');
-    document.getElementById('eventos').innerHTML = state.events.map(e => `
-      <div class="evento ${e.confirmed ? '' : 'pendente'}">
-        <img src="/assets/cards/${e.card.asset}" alt="">
-        <div class="info">
-          <div class="tipo">${e.type === 'draw'
-            ? 'compra' + (e.source === 'lixo' ? ' (do lixo)' : ' (do monte)')
-            : 'descarte'}${e.confirmed ? '' : ' — confirmar?'}</div>
-          ${e.card.display}
-        </div>
-        <button onclick="abrirCorrecao(${e.id})">corrigir</button>
-      </div>`).join('');
+
+    const eventos = state.events || [];
+    const porTipo = (tipo) => eventos.filter(e => e.type === tipo);
+    const render = (id, tipo, vazio) => {
+      const lista = porTipo(tipo);
+      document.getElementById(id).innerHTML = lista.length
+        ? lista.map(linhaEvento).join('')
+        : `<div class="vazio-lista">${vazio}</div>`;
+    };
+    render('compras', 'draw', 'nenhuma compra ainda');
+    render('descartes', 'discard', 'nenhum descarte ainda');
   }
 
   let reconectando = false;
