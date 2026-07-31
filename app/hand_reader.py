@@ -35,7 +35,8 @@ class FanReader:
     def __init__(self, match_dist: float = 45.0, window: int = 25,
                  min_appear: int = 6, expire: int = 20,
                  max_slots: int | None = None,
-                 shift_tol: float = 20.0, max_shift: float = 200.0):
+                 shift_tol: float = 20.0, max_shift: float = 200.0,
+                 win_margin: float = 1.6):
         self.match_dist = match_dist
         self.window = window
         self.min_appear = min_appear
@@ -47,6 +48,13 @@ class FanReader:
         # deslocamento "carta i -> vaga i+1" entra no mesmo voto.
         self.shift_tol = shift_tol
         self.max_shift = max_shift      # movimento maior que isso é implausível
+        # Histerese do rótulo: para TROCAR a carta de uma vaga já estabelecida,
+        # a concorrente precisa ganhar por esta margem. Sem isso, alguns frames
+        # borrados (câmera tremendo) viram o rótulo, a mão exibida muda sozinha
+        # para uma carta que nem está no leque, e a mudança ainda gera compra e
+        # descarte fantasmas. Estabelecer um rótulo continua fácil; derrubar um
+        # já estabelecido é que passa a ser difícil.
+        self.win_margin = win_margin
         self._slots: list[dict] = []
         self._displayed: list[str] = []
         self._empty = 0                 # frames seguidos sem NENHUMA detecção
@@ -134,7 +142,7 @@ class FanReader:
             slot = self._match(cx, cy)
             if slot is None:
                 slot = {"x": cx, "y": cy, "votes": deque(maxlen=self.window),
-                        "misses": 0}
+                        "misses": 0, "label": None}
                 self._slots.append(slot)
             # posição segue a carta suavemente (média móvel)
             slot["x"] = 0.7 * slot["x"] + 0.3 * cx
@@ -156,16 +164,23 @@ class FanReader:
         """Força da vaga: confiança acumulada de tudo que ela já viu."""
         return sum(confidence for _code, confidence in votes)
 
-    @staticmethod
-    def _winner(votes) -> str:
+    def _winner(self, votes, atual: str | None = None) -> str:
         """Rótulo com maior confiança ACUMULADA na vaga.
 
-        Empate desempata pelo código, só para a saída ser determinística.
+        Se a vaga já tem um rótulo (`atual`), ele só cai quando a concorrente
+        o supera por `win_margin` — histerese que impede o rótulo de piscar a
+        cada frame borrado. Empate desempata pelo código, para a saída ser
+        determinística.
         """
         totals: Counter = Counter()
         for code, confidence in votes:
             totals[code] += confidence
-        return max(totals.items(), key=lambda kv: (kv[1], kv[0]))[0]
+        campeao = max(totals.items(), key=lambda kv: (kv[1], kv[0]))[0]
+        if atual is None or campeao == atual:
+            return campeao
+        if totals[campeao] < totals[atual] * self.win_margin:
+            return atual          # não ganhou por margem: mantém o que estava
+        return campeao
 
     def _recompute(self) -> bool:
         confirmed = [s for s in self._slots if len(s["votes"]) >= self.min_appear]
@@ -177,7 +192,10 @@ class FanReader:
             confirmed.sort(key=lambda s: (s["misses"], -self._weight(s["votes"])))
             confirmed = confirmed[:self.max_slots]
         confirmed.sort(key=lambda s: s["x"])
-        cards = [self._winner(s["votes"]) for s in confirmed]
+        cards = []
+        for s in confirmed:
+            s["label"] = self._winner(s["votes"], s.get("label"))
+            cards.append(s["label"])
         if cards != self._displayed:
             self._displayed = cards
             return True

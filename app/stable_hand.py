@@ -89,11 +89,20 @@ class StableHand:
             self._last_candidate = cand_key
             self._stable = 1
 
-        # ACOMPANHA: qualquer conjunto que fique estável por `lock_frames`
-        # passa a ser o exibido. Sem exigir `hand_size` — senão a mão de 10 do
-        # instante da compra nunca apareceria — e sem exigir botão.
-        # Conjunto VAZIO também vale: quem abaixa as cartas espera ver zero.
+        # ACOMPANHA, mas só aceita mão PLAUSÍVEL: vazia (jogador abaixou as
+        # cartas), `hand_size` (mão normal) ou `hand_size + 1` (instante da
+        # compra). Qualquer outro tamanho é bagunça de transição — no ato
+        # físico de pôr ou tirar uma carta a mão passa na frente, cartas ficam
+        # ocultas e os frames borram, e a leitura desce a 6, 7, 8 por um
+        # segundo. Sem este filtro a tela mostrava essa bagunça, que é o que
+        # dava a sensação de "ele fica trocando as cartas sozinho".
+        #
+        # O custo: se a leitura de fato estabilizar num tamanho inesperado, a
+        # tela segura a mão anterior em vez de mostrar uma mão incompleta.
+        # É o comportamento pedido — travado, e mudando só para mão inteira.
+        tamanhos_plausiveis = (0, self.hand_size, self.hand_size + 1)
         if (self._stable >= self.lock_frames
+                and len(candidate) in tamanhos_plausiveis
                 and cand_key != tuple(sorted(self._locked))):
             self._locked = list(candidate)
             return True

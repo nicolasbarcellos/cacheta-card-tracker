@@ -189,6 +189,32 @@ def test_shift_needs_support_from_several_slots():
     assert r.cards == ["AS", "2H", "3D", "4C"]
 
 
+def test_established_label_survives_a_burst_of_misreads():
+    """Camera tremendo: alguns frames borrados nao podem virar o rotulo.
+
+    Sem histerese, uma rajada curta de leitura errada trocava a carta exibida
+    por uma que nem esta no leque - e a mudanca ainda gerava compra e descarte
+    fantasmas, porque os eventos saem da mudanca da mao.
+    """
+    r = FanReader(min_appear=3, window=30, win_margin=1.6)
+    for _ in range(15):
+        r.update([d("AS", 100, conf=0.85)])
+    assert r.cards == ["AS"]
+    for _ in range(4):                      # rajada de erro com confianca alta
+        r.update([d("4S", 100, conf=0.90)])
+    assert r.cards == ["AS"]                # nao ganhou por margem: segura
+
+
+def test_a_real_change_still_wins_when_sustained():
+    # a carta REALMENTE mudou: com votos sustentados, a nova assume
+    r = FanReader(min_appear=3, window=30, win_margin=1.6)
+    for _ in range(10):
+        r.update([d("AS", 100, conf=0.85)])
+    for _ in range(30):
+        r.update([d("4S", 100, conf=0.85)])
+    assert r.cards == ["4S"]
+
+
 def test_reset_clears():
     r = FanReader(min_appear=1)
     r.update(fan(("AS", 100)))

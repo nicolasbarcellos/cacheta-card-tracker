@@ -127,6 +127,30 @@ def test_reorder_does_not_reset_the_stability_count():
     assert sorted(sh.cards) == sorted(a)
 
 
+def test_incomplete_reading_does_not_replace_the_hand():
+    """Leitura estavel de 7 cartas nao substitui a mao de 9.
+
+    No ato de por ou tirar uma carta, a mao passa na frente e a leitura desce
+    a 6-8 por um segundo. Mostrar isso e o que dava a sensacao de o sistema
+    trocar as cartas sozinho.
+    """
+    sh = StableHand(hand_size=9, lock_frames=12)
+    feed(sh, NINE, 20)
+    assert len(sh.cards) == 9
+    feed(sh, NINE[:7], 40)                  # leitura incompleta, mas estavel
+    assert sorted(sh.cards) == sorted(NINE)  # segurou a mao boa
+
+
+def test_incomplete_reading_then_a_real_hand_updates():
+    # depois da bagunca, uma mao inteira de novo e aceita normalmente
+    sh = StableHand(hand_size=9, lock_frames=12)
+    feed(sh, NINE, 20)
+    feed(sh, NINE[:7], 20)                  # transicao bagunçada
+    nova = [c for c in NINE if c != "QS"] + ["KH"]
+    feed(sh, nova, 40)
+    assert sorted(sh.cards) == sorted(nova)
+
+
 def test_empties_when_the_hand_leaves_for_good():
     # cartas fora do quadro por tempo suficiente: a mao exibida zera sozinha
     sh = StableHand(hand_size=9, lock_frames=12)

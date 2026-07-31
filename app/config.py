@@ -52,6 +52,15 @@ class Config:
     #                                de propósito: segura a carta que pisca. quem
     #                                impede vaga órfã de duplicar agora é o teto
     #                                de vagas do FanReader (= hand_size)
+    # Quanto a carta concorrente precisa acumular a MAIS que a atual para
+    # trocar o rótulo de uma vaga já estabelecida. Medido: com o modelo velho
+    # a troca A♦/4♦ vinha com o errado ganhando por 2,28x sustentado ao longo
+    # de 21 dos 30 frames da janela — margem nenhuma filtraria aquilo, era
+    # defeito de modelo. Depois do retreino com peso nos ranks fracos (A subiu
+    # para 96,5%, 4 para 96,6%) o erro virou RAJADA CURTA, e aí margem resolve.
+    # Custo: uma troca de carta REAL demora ~22 frames (~1,5s) para aparecer,
+    # porque a nova precisa empurrar a antiga para fora da janela de votos.
+    fan_win_margin: float = 2.5
     lock_frames: int = 12          # frames de 9 estável p/ TRAVAR a mão no overlay
     hand_size: int = 9
     server_host: str = "127.0.0.1"
