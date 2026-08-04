@@ -322,6 +322,28 @@ def test_squeezed_card_gets_its_own_slot():
     assert r.cards == ["AS", "2H", "KD", "3D"]
 
 
+def test_same_corner_read_twice_does_not_duplicate_the_card():
+    """O outro lado da regra de uma-por-vaga: MESMO rotulo colado = mesma carta.
+
+    Medido ao vivo: o AS saiu numa vaga a 42px da propria, com confianca 0.55
+    contra 0.94 da leitura boa - perto o bastante para disputar a vaga, longe o
+    bastante para escapar da fusao do hand_instances (~15px). Tratada como
+    "carta a mais", ela duplicava o as na mao exibida e gerava compra e
+    descarte fantasmas do proprio as.
+    """
+    r = FanReader(min_appear=3, expire=20, window=30)
+    for _ in range(15):
+        r.update(fan(("AS", 100), ("2H", 200), ("3D", 300)))
+    assert r.cards == ["AS", "2H", "3D"]
+
+    # segunda leitura do MESMO canto, 42px abaixo e menos confiante
+    fantasma = [d("AS", 100), d("2H", 200), d("3D", 300),
+                d("AS", 100, y=142, conf=0.55)]
+    for _ in range(15):
+        r.update(fantasma)
+    assert r.cards == ["AS", "2H", "3D"]
+
+
 def test_the_closest_detection_keeps_the_slot_whatever_the_order():
     """A disputa pela vaga se resolve por DISTANCIA, nao pela ordem da lista.
 

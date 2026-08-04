@@ -185,26 +185,40 @@ class FanReader:
         # Quem fica com a vaga é a detecção MAIS PRÓXIMA dela, não a primeira
         # da lista: senão o resultado dependia da ordem em que o modelo
         # devolveu as caixas, e a carta legítima podia perder a própria vaga
-        # (com os votos acumulados dela) para a intrusa. Quem perde a disputa
-        # abre vaga nova, que é o que ela é de fato: uma carta a mais.
+        # (com os votos acumulados dela) para a intrusa. O que acontece com
+        # quem perde depende do RÓTULO — ver o comentário no laço abaixo.
         candidatos = []
         for d in detections:
             cx = (d.box[0] + d.box[2]) / 2
             cy = (d.box[1] + d.box[3]) / 2
             slot, dist = self._match(cx, cy)
             candidatos.append((d, cx, cy, slot, dist))
-        mais_perto: dict[int, float] = {}
-        for _d, _cx, _cy, slot, dist in candidatos:
+        mais_perto: dict[int, tuple[float, str]] = {}
+        for d, _cx, _cy, slot, dist in candidatos:
             if slot is not None:
                 key = id(slot)
-                if key not in mais_perto or dist < mais_perto[key]:
-                    mais_perto[key] = dist
+                if key not in mais_perto or dist < mais_perto[key][0]:
+                    mais_perto[key] = (dist, d.card.code)
 
         seen = set()
         tomadas: set[int] = set()
         for d, cx, cy, slot, dist in candidatos:
             if slot is not None and (id(slot) in tomadas
-                                     or dist > mais_perto[id(slot)]):
+                                     or dist > mais_perto[id(slot)][0]):
+                # Perdeu a disputa. O RÓTULO diz o que ela é de verdade:
+                #
+                # - rótulo IGUAL ao do vencedor = o mesmo canto lido duas
+                #   vezes. Medido ao vivo: o A♠ saiu numa vaga a 42 px da
+                #   própria, com confiança 0.55 contra 0.94 da leitura boa —
+                #   perto o bastante para disputar a vaga, longe o bastante
+                #   para escapar da fusão do `hand_instances` (~15 px). Abrir
+                #   vaga para ela duplicava a carta na mão e gerava compra e
+                #   descarte fantasmas. Descarta.
+                # - rótulo DIFERENTE = é outra carta, encostada na vizinha.
+                #   Esse é o caso que a regra de uma-por-vaga existe para
+                #   resolver, e aí a vaga nova é legítima.
+                if d.card.code == mais_perto[id(slot)][1]:
+                    continue
                 slot = None       # outra detecção está mais perto desta vaga
             if slot is None:
                 slot = {"x": cx, "y": cy, "votes": deque(maxlen=self.window),
