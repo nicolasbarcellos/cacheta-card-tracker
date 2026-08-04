@@ -101,7 +101,29 @@ instável, e a mão indo a zero (jogador abaixou as cartas) não pode virar nove
      mão muda de UMA carta por vez, uma queda de duas ou mais **congela** o leitor: não expira vaga
      e não mexe na exibição. Antes disso, fechar o leque expirava as 8 vagas ocultas e ao reabrir
      elas nasciam sem histórico de votos — o leitor "esquecia" o que já tinha acertado.
-     Efeito colateral assumido: com o leque fechado o sistema fica cego a mudanças reais.
+   - **A DURAÇÃO da oclusão decide se as vagas ainda valem** (2026-08-04). Oclusão curta (a mão
+     passando na frente) não mexe no leque: preservar os votos é o que faz a leitura certa voltar
+     no primeiro frame. Oclusão longa é o leque FECHADO — e na cacheta fecha-se o leque justamente
+     para encaixar a carta comprada, então ao reabrir nada está onde estava. Casar o leque novo nas
+     vagas velhas fazia cada vaga teimar com o rótulo antigo (30 votos acumulados contra os poucos
+     da carta que chegou, mais a margem de histerese): a mão saía remontada nas posições erradas,
+     estável o bastante para ser aceita, e a "carta nova" do diff era qualquer uma. Passando de
+     `expire` frames de oclusão, as vagas são descartadas e o leque é relido do zero. Custo: ~1 s
+     a mais para a mão aparecer depois de reabrir. **Validado ao vivo**: o gesto de fechar com as
+     duas mãos, encaixar a carta no meio e reabrir passou a registrar a compra certa.
+   - **UMA detecção por vaga** (2026-08-04). Duas cartas não ocupam a mesma posição física, mas o
+     casamento por proximidade permitia isso: num leque apertado as duas caíam dentro do raio da
+     MESMA vaga e as duas votavam nela. A vaga virava empate técnico entre dois rótulos — medido ao
+     vivo, `9S=13.86` contra `7C=13.34` — e a perdedora sumia da mão. O leitor entregava 9 cartas
+     onde havia 10, o tracker via "entrou uma e saiu outra" (que ele ignora de propósito) e a
+     compra nunca registrava. Fica com a vaga a detecção MAIS PRÓXIMA dela, não a primeira da
+     lista: por ordem, o resultado dependia da ordem em que o modelo devolveu as caixas, e a carta
+     legítima podia perder a própria vaga — com os votos acumulados — para a intrusa. Quem perde a
+     disputa abre vaga nova, que é o que ela é de fato: uma carta a mais. É a explicação estrutural
+     do sintoma antigo **"carta some e a vizinha duplica"**.
+
+   Efeito colateral assumido do congelamento: com o leque fechado o sistema fica cego a mudanças
+   reais — trocar carta com o leque fechado só é percebido ao reabrir.
 3. `StableHand` (`app/stable_hand.py`) — score de presença por *instância*; **acompanha** a mão:
    um conjunto que fique estável por `lock_frames` substitui o exibido, automaticamente.
    `force_relock()` (botão "Reler mão") virou só um reset manual.
@@ -275,6 +297,35 @@ o índice de canto chegava ao modelo com ~20×30 px após o resize para `imgsz=1
 4♣ saía com confiança média 0.32 (contra 0.74 do 4♥) e o 5♠ era lido como J♠ (peso 160 × 76).
 Aproximar o leque até preencher boa parte do quadro corrigiu ambos. **Antes de culpar o modelo ou
 retreinar, confira o tamanho do índice no quadro.**
+
+### O leque tem de estar em ARCO, não enfileirado
+
+Medido em 2026-08-04, comparando as leituras que falharam com a que fechou um turno inteiro certo.
+Nas que falharam, os 9 índices vinham quase na mesma altura (`y` variando ~50 px) e espremidos em
+645 px de largura — um terço do quadro, com os cantos vizinhos a ~70 px. Na que funcionou, o `y`
+descrevia um arco de ~290 px: pontas embaixo, meio no alto.
+
+O motivo é geométrico, não de modelo: **num arco, duas cartas vizinhas se separam na horizontal E
+na vertical**; enfileiradas, só na horizontal, e aí basta um tremor para uma cobrir a outra e as
+duas caírem na mesma vaga. Foi assim três vezes na mesma sessão (7♣ com 9♠ duas vezes, 10♦ com 9♠
+uma). Todas com **10 cartas** — é no instante da compra que o leque aperta e o leitor fica frágil.
+
+Critério prático para conferir sem medir nada: no `/stream/hand`, **as caixas verdes não podem se
+encostar**. Duas coladas indicam onde vai falhar.
+
+### A câmera da mão não pode pegar cartas na mesa
+
+Ela conta tudo o que vê. Um 10♣ largado no canto superior direito do quadro entrou na mão exibida
+como décima carta (confiança ~0.5, metade da das cartas do leque, porque estava longe) e travou o
+teste: a mão já estava em 10, e a compra levaria a 11 — tamanho implausível, que o `StableHand`
+congela. Tirar a carta do quadro gerou ainda um descarte fantasma dela.
+
+### Os índices de câmera do Windows não são estáveis
+
+Em 2026-08-04 a webcam USB externa (a da MÃO) saiu do índice 1 para o 0 sozinha, e o app passou a
+tratar a interna do notebook como mão. O Windows renumera ao desconectar/reconectar o USB ou
+reiniciar. Sintoma: o preview "Câmera da mão" do painel mostra a câmera errada; conserto: trocar
+`hand_cam_index` e `discard_cam_index` (ou conferir com `scripts/check_cams.py`).
 
 ## Modelo e treino (`training/`)
 
