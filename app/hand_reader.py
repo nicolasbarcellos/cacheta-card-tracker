@@ -58,14 +58,16 @@ class FanReader:
         self._slots: list[dict] = []
         self._displayed: list[str] = []
         self._empty = 0                 # frames seguidos sem NENHUMA detecção
+        self._occluded = 0              # frames seguidos de leque fechado
 
     def _match(self, cx, cy):
+        """Vaga mais próxima dentro do raio, e a distância até ela."""
         best, best_d = None, self.match_dist
         for s in self._slots:
             d = ((s["x"] - cx) ** 2 + (s["y"] - cy) ** 2) ** 0.5
             if d < best_d:
                 best, best_d = s, d
-        return best
+        return best, best_d
 
     def _estimate_shift(self, centers) -> tuple[float, float]:
         """Translação COMUM do leque desde o frame anterior.
@@ -137,7 +139,31 @@ class FanReader:
         # tinha acertado e podia estabelecer rótulo errado do zero. Congelando,
         # os votos acumulados sobrevivem e a leitura certa volta na hora.
         if self._displayed and len(detections) < len(self._displayed) - 1:
+            self._occluded += 1
             return False
+
+        # Ao REABRIR, a duração da oclusão diz se as vagas ainda valem.
+        #
+        # Oclusão CURTA (a mão passando na frente) não mexe no leque: as cartas
+        # voltam onde estavam e os votos acumulados são o que faz a leitura
+        # certa voltar no primeiro frame. É para isso que o congelamento existe.
+        #
+        # Oclusão LONGA é o leque fechado — e na cacheta se fecha o leque
+        # justamente para encaixar a carta comprada. Ao reabrir, o leque foi
+        # remontado e nada está onde estava. Casar o leque novo nas vagas
+        # velhas faz cada vaga teimar com o rótulo antigo: são 30 votos
+        # acumulados contra os poucos da carta que chegou, e ainda por cima a
+        # margem de histerese. A mão sai remontada nas posições erradas,
+        # estável o bastante para ser aceita — e a "carta nova" que o tracker
+        # deduz do diff é qualquer uma, menos a que o jogador comprou.
+        #
+        # `expire` separa os dois casos porque já é a medida de "ausência
+        # tolerável" do leitor: passou disso, trate como leque novo e releia.
+        # Custo: ~1 s a mais para a mão aparecer depois de reabrir.
+        if self._occluded:
+            if self._occluded >= self.expire:
+                self._slots.clear()
+            self._occluded = 0
 
         centers = [((d.box[0] + d.box[2]) / 2, (d.box[1] + d.box[3]) / 2)
                    for d in detections]
@@ -147,15 +173,44 @@ class FanReader:
                 s["x"] += shift_x
                 s["y"] += shift_y
 
-        seen = set()
+        # UMA detecção por vaga. Duas cartas não ocupam a mesma posição física
+        # no mesmo frame, mas o casamento por proximidade permitia isso: num
+        # leque apertado as duas caíam dentro do raio da MESMA vaga e as duas
+        # votavam nela. A vaga virava um empate técnico entre dois rótulos
+        # (medido ao vivo: 9S=13.86 contra 7C=13.34) e a perdedora sumia da
+        # mão — o leitor entregava 9 cartas onde havia 10, e o tracker via
+        # "entrou uma e saiu outra", que ele ignora de propósito. É a origem
+        # do sintoma antigo "carta some e a vizinha duplica".
+        #
+        # Quem fica com a vaga é a detecção MAIS PRÓXIMA dela, não a primeira
+        # da lista: senão o resultado dependia da ordem em que o modelo
+        # devolveu as caixas, e a carta legítima podia perder a própria vaga
+        # (com os votos acumulados dela) para a intrusa. Quem perde a disputa
+        # abre vaga nova, que é o que ela é de fato: uma carta a mais.
+        candidatos = []
         for d in detections:
             cx = (d.box[0] + d.box[2]) / 2
             cy = (d.box[1] + d.box[3]) / 2
-            slot = self._match(cx, cy)
+            slot, dist = self._match(cx, cy)
+            candidatos.append((d, cx, cy, slot, dist))
+        mais_perto: dict[int, float] = {}
+        for _d, _cx, _cy, slot, dist in candidatos:
+            if slot is not None:
+                key = id(slot)
+                if key not in mais_perto or dist < mais_perto[key]:
+                    mais_perto[key] = dist
+
+        seen = set()
+        tomadas: set[int] = set()
+        for d, cx, cy, slot, dist in candidatos:
+            if slot is not None and (id(slot) in tomadas
+                                     or dist > mais_perto[id(slot)]):
+                slot = None       # outra detecção está mais perto desta vaga
             if slot is None:
                 slot = {"x": cx, "y": cy, "votes": deque(maxlen=self.window),
                         "misses": 0, "label": None}
                 self._slots.append(slot)
+            tomadas.add(id(slot))
             # posição segue a carta suavemente (média móvel)
             slot["x"] = 0.7 * slot["x"] + 0.3 * cx
             slot["y"] = 0.7 * slot["y"] + 0.3 * cy
@@ -245,3 +300,4 @@ class FanReader:
         self._slots.clear()
         self._displayed = []
         self._empty = 0
+        self._occluded = 0

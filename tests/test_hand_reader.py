@@ -252,6 +252,94 @@ def test_one_card_leaving_is_still_a_real_change():
     assert r.cards == ["AS", "2H", "3D", "4C"]
 
 
+def test_reopening_after_inserting_a_card_reads_the_new_card():
+    """Fechar o leque com as DUAS maos, encaixar a compra e reabrir.
+
+    E o gesto real do jogador: para por a carta comprada no meio do leque ele
+    fecha, encaixa e reabre. Ao reabrir, as cartas NAO voltam para os lugares
+    de antes - o leque foi remontado e tudo deslizou.
+
+    Sem tratamento, as vagas guardadas durante a oclusao descrevem o leque
+    ANTIGO: cada uma chega com 30 votos acumulados do rotulo velho e ainda tem
+    a margem de histerese, entao a carta que passou a ocupar aquele lugar nao
+    consegue derrubar o rotulo. A mao sai remontada nas posicoes erradas, e a
+    "carta nova" que o tracker deduz do diff e qualquer uma - menos a certa.
+    """
+    r = FanReader(min_appear=3, expire=20, window=30)
+    aberto = fan(("AS", 100), ("2H", 200), ("3D", 300), ("4C", 400),
+                 ("5S", 500))
+    for _ in range(15):
+        r.update(aberto)
+    assert r.cards == ["AS", "2H", "3D", "4C", "5S"]
+
+    for _ in range(40):                 # leque fechado por bem mais que expire
+        r.update(fan(("AS", 100)))
+
+    # reabriu com a KD encaixada no meio e o leque inteiro reposicionado
+    remontado = fan(("AS", 100), ("2H", 180), ("KD", 260), ("3D", 340),
+                    ("4C", 420), ("5S", 500))
+    for _ in range(15):
+        r.update(remontado)
+    assert r.cards == ["AS", "2H", "KD", "3D", "4C", "5S"]
+
+
+def test_brief_occlusion_still_preserves_the_votes():
+    """A mao passando na frente NAO pode custar o historico de votos.
+
+    O outro lado da moeda do teste acima: oclusao curta nao mexe no leque, e
+    preservar os votos e o que faz a leitura certa voltar no primeiro frame.
+    """
+    r = FanReader(min_appear=8, expire=20, window=30)
+    aberto = fan(("AS", 100), ("2H", 200), ("3D", 300), ("4C", 400),
+                 ("5S", 500))
+    for _ in range(15):
+        r.update(aberto)
+
+    for _ in range(5):                  # bem menos que expire
+        r.update(fan(("AS", 100)))
+
+    r.update(aberto)                    # UM frame e a mao ja esta de volta
+    assert r.cards == ["AS", "2H", "3D", "4C", "5S"]
+
+
+def test_squeezed_card_gets_its_own_slot():
+    """Carta encaixada colada na vizinha nao pode dividir a vaga com ela.
+
+    Medido ao vivo: com o 7C e o 9S sobrepostos, a vaga acumulava os dois
+    rotulos num empate tecnico (9S=13.86 contra 7C=13.34) e a perdedora sumia
+    da mao. O leitor entregava 9 cartas onde havia 10, e o tracker via "entrou
+    uma e saiu outra" - que ele ignora de proposito. A compra nunca registrava.
+    """
+    r = FanReader(min_appear=3, expire=20, window=30)
+    for _ in range(15):
+        r.update(fan(("AS", 100), ("2H", 200), ("3D", 300)))
+    assert r.cards == ["AS", "2H", "3D"]
+
+    # KD encaixada a 30px da 2H: dentro do raio de casamento (45) da vaga dela
+    apertado = fan(("AS", 100), ("2H", 200), ("KD", 230), ("3D", 300))
+    for _ in range(15):
+        r.update(apertado)
+    assert r.cards == ["AS", "2H", "KD", "3D"]
+
+
+def test_the_closest_detection_keeps_the_slot_whatever_the_order():
+    """A disputa pela vaga se resolve por DISTANCIA, nao pela ordem da lista.
+
+    Se valesse a primeira da lista, o resultado dependeria da ordem em que o
+    modelo devolveu as caixas - e a carta legitima podia perder a propria vaga,
+    com os votos acumulados dela, para a intrusa que chegou colada.
+    """
+    r = FanReader(min_appear=3, expire=20, window=30)
+    for _ in range(15):
+        r.update(fan(("AS", 100), ("2H", 200), ("3D", 300)))
+
+    # a intrusa vem ANTES da dona da vaga na lista de deteccoes
+    apertado = fan(("AS", 100), ("KD", 230), ("2H", 200), ("3D", 300))
+    for _ in range(15):
+        r.update(apertado)
+    assert r.cards == ["AS", "2H", "KD", "3D"]
+
+
 def test_reset_clears():
     r = FanReader(min_appear=1)
     r.update(fan(("AS", 100)))
