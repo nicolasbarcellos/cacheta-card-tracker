@@ -355,6 +355,28 @@ acerto do modelo, laranja é correção pela ordem.
 Capture ao menos **duas ordens diferentes** das mesmas cartas, senão o modelo pode
 associar posição a rótulo em vez de aprender o glifo.
 
+#### As guardas do `capture_rotulado.py` NÃO bastam — confira a imagem
+
+Medido em 2026-08-04: uma captura de 63 frames passou por todas as guardas com os **quatro
+oitos rotulados errados** (a mão informada tinha os naipes numa ordem, a mão física em outra).
+`MIN_CONCORDA = 0.5` deixou passar porque 5 das 9 cartas batiam — as outras cinco estavam certas.
+Treinar com aquilo teria ensinado exatamente a confusão de naipe que a captura existia para
+consertar. Foram rejeitadas apagando as imagens de `review/`, que é o mecanismo previsto.
+
+Duas assinaturas que denunciam ordem trocada, e valem como regra de leitura do log:
+
+- **Concordância CONSTANTE** ("sempre 5/9") = um conjunto FIXO de cartas não bate. Modelo errando
+  de verdade oscila (7/9, 9/9, 8/9) porque depende do ângulo e do foco. Constante é rótulo.
+- **Concordância alta com um par vizinho trocado** (7/9) passa fácil na guarda. Acontece quando o
+  leque abre para CIMA em vez de para os lados: medido, as três primeiras cartas saíram a 3 e 9 px
+  de distância horizontal uma da outra, e a ordenação por x que dá o rótulo vira sorteio a cada
+  tremor. Antes de gravar, exija dezenas de px entre cantos vizinhos.
+
+Procedimento que fecha o buraco: **antes da captura longa, rode `training/ver_ordem.py` e OLHE a
+imagem** — ele numera as detecções da esquerda para a direita, avisa quando o menor gap entre
+cantos fica abaixo de 25 px e já imprime a linha de comando do `capture_rotulado.py` com a ordem
+lida. Custa 10 s e é a única verificação que não depende do que o modelo acha.
+
 ### Hipótese refutada: nitidez do frame não separa acerto de erro
 
 O erro A↔4 aparecia mais com a câmera balançando, o que sugeria filtrar frames borrados
