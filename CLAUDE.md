@@ -26,6 +26,22 @@ Diagnóstico de câmera/modelo (todos abrem janela do OpenCV, `q` encerra):
 `training/diagnose_live.py` (log ao vivo de carta + confiança) ·
 `training/diagnose.py` (estabilidade em ~40 frames) · `training/dump_dets.py` (geometria das caixas).
 
+Comparação entre modelos (sem câmera, roda em disco):
+
+```powershell
+python training/eval_classes.py models/cards.pt 150
+python training/eval_classes.py models/cards_backup_4.pt 150   # o anterior, MESMO conjunto
+```
+
+`eval_classes.py` é o instrumento de aceite de um retreino — não confie no mAP do Ultralytics, que
+mede o modelo contra o dataset que o treinou e sempre parece ótimo. Ele mede acerto de CLASSE por
+índice e separa o erro por tipo (naipe na mesma cor × valor), que é o que diz onde atacar. Duas
+decisões de medição que não são óbvias: o casamento é **invertido** (cada predição vai para a
+verdade mais próxima, não o contrário — senão, num leque apertado, cada verdade rouba a predição da
+vizinha e a métrica mede ruído) e **não usa IoU** (mudar a caixa do índice alteraria o IoU sem
+alterar a classificação). O viés de centro é reportado à parte e virou diagnóstico próprio.
+**Compare sempre no MESMO conjunto de validação.**
+
 Antes de culpar o modelo, rode `diagnose_live.py`: leque pequeno no quadro degrada muito o
 reconhecimento — o pip do naipe é o menor detalhe do índice e é o primeiro a se perder.
 
@@ -38,20 +54,25 @@ estado no WebSocket (`app/server.py:52`). Os frames anotados vão para o dict `a
 pelo MJPEG em `/stream/{cam}` (encode em `asyncio.to_thread`, cache de 120 ms).
 
 ```
-CameraStream(discard) → detect → pick_top_card → StabilityFilter → tracker.on_stable_top_card → evento "discard"
-CameraStream(hand)    → detect ─┬→ hand_instances → FanReader → StableHand → tracker.set_hand_display  (overlay da mão)
-                                └→ hand_codes     → StabilityFilter → tracker.on_stable_hand → evento "draw"
+CameraStream(hand)    → detect → hand_instances → FanReader → StableHand ─┬→ tracker.set_hand_display  (overlay da mão)
+                                                                          └→ tracker.on_hand_changed  (eventos draw/discard)
+CameraStream(discard) → detect → draw_boxes → annotated["discard"]        (só preview do painel)
 ```
 
-**A câmera da mão alimenta dois caminhos independentes** (`app/main.py:process_frame`), e essa é a
-chave para entender o projeto:
+**UMA câmera gera tudo** (`app/main.py:process_frame`) — desde `f5fdf64`. Compra e descarte saem
+os dois da MUDANÇA do leque: cresceu uma carta = compra (a que entrou), encolheu uma = descarte
+(a que saiu). Não é preciso ver o monte, que é o que exigia a segunda câmera.
 
-- **Exibição** (leque no OBS) — `FanReader` + `StableHand`: prioriza estabilidade visual. Trava as
-  9 cartas e não solta.
-- **Eventos** (compra/descarte) — `StabilityFilter` + `GameTracker`: prioriza detectar a
-  *transição* 9→10 cartas. Trabalha com `frozenset` de códigos, sem posição.
+A câmera do descarte continua sendo lida e anotada para o preview do painel, **mas não gera evento
+nenhum**. Se gerasse, o descarte sairia duplicado (uma vez pela mão, outra pelo monte).
 
-Não unifique os dois: eles têm requisitos opostos (segurar × reagir).
+O caminho é único e sequencial, não são dois pipelines paralelos: a mesma leitura estável
+(`StableHand`) alimenta a exibição e os eventos. Estabilidade e reação deixaram de ter requisitos
+opostos porque o evento agora depende da mesma mão que é exibida — o preço é a latência do
+`lock_frames` (~2 s) valer também para o evento.
+
+`tracker.on_hand_changed` só reage a mudança de **exatamente uma** carta. Salto maior é leitura
+instável, e a mão indo a zero (jogador abaixou as cartas) não pode virar nove descartes.
 
 ### Camadas de filtragem da mão
 
@@ -62,14 +83,46 @@ Não unifique os dois: eles têm requisitos opostos (segurar × reagir).
 2. `FanReader` (`app/hand_reader.py`) — votação temporal por "vaga" (posição estável na imagem).
    O voto é **ponderado pela confiança**, não por contagem: medido no setup real, quando o modelo
    troca o naipe dentro da mesma cor (♠↔♣, ♥↔♦) erra com ~0.34 e acerta com ~0.85, então por
-   maioria simples o errado venceria. Teto de vagas = `hand_size`: vaga sobrando é espúria, e o
+   maioria simples o errado venceria. Teto de vagas = `hand_size + 1`: vaga sobrando é espúria, e o
    corte ordena por `misses` antes de peso (depois de o leque se mover, a vaga velha ainda é
    "forte" mas está ausente — quem tem de ganhar é a nova).
+
+   Duas proteções que vieram depois e não são óbvias:
+
+   - **Histerese de rótulo** (`fan_win_margin = 2.5`): para TROCAR a carta de uma vaga já
+     estabelecida, a concorrente precisa ganhar por essa margem. Sem isso, alguns frames borrados
+     viravam o rótulo e a mudança gerava compra e descarte fantasmas. Estabelecer um rótulo
+     continua fácil; derrubar um já estabelecido é que ficou difícil. Custo: uma troca REAL de
+     carta demora ~22 frames (~1,5 s) para aparecer. Margem só funciona porque, depois do retreino,
+     o erro virou rajada curta — com o modelo velho o errado ganhava por 2,28× **sustentado**, e
+     margem nenhuma filtraria aquilo.
+   - **Queda brusca = oclusão, não jogada** (`146ae94`): ver 1 carta onde havia 9 é o leque
+     fechando (as outras ficam atrás da primeira) ou a mão passando na frente. Como na cacheta a
+     mão muda de UMA carta por vez, uma queda de duas ou mais **congela** o leitor: não expira vaga
+     e não mexe na exibição. Antes disso, fechar o leque expirava as 8 vagas ocultas e ao reabrir
+     elas nasciam sem histórico de votos — o leitor "esquecia" o que já tinha acertado.
+     Efeito colateral assumido: com o leque fechado o sistema fica cego a mudanças reais.
 3. `StableHand` (`app/stable_hand.py`) — score de presença por *instância*; **acompanha** a mão:
-   qualquer conjunto que fique estável por `lock_frames` substitui o exibido, automaticamente e
-   de **qualquer tamanho**. O `hand_size` não é exigido — a mão passa por 10 cartas no instante
-   da compra e o jogador espera ver as 10. `force_relock()` (botão "Reler mão") virou só um
-   reset manual.
+   um conjunto que fique estável por `lock_frames` substitui o exibido, automaticamente.
+   `force_relock()` (botão "Reler mão") virou só um reset manual.
+
+   Só aceita **mão plausível**: `0` (jogador abaixou as cartas), `hand_size` ou `hand_size + 1`
+   (instante da compra). Qualquer outro tamanho é bagunça de transição — no ato físico de pôr ou
+   tirar uma carta a mão passa na frente, cartas ficam ocultas e os frames borram, e a leitura
+   desce a 6, 7, 8 por um segundo. Sem esse filtro a tela mostrava essa bagunça, que era a
+   sensação de "ele fica trocando as cartas sozinho". Custo: se a leitura estabilizar num tamanho
+   inesperado, a tela segura a mão anterior em vez de mostrar uma mão incompleta.
+
+   A ESTABILIDADE olha o conjunto, não a ordem (duas cartas trocando de lugar por um tremor não é
+   mão nova); a ORDEM, essa, é preservada na exibição — é a ordem física do leque, da esquerda
+   para a direita.
+
+   `lock_frames = 30` (~2 s), era 12. Com 12 (~0,8 s) uma leitura errada durante a organização das
+   cartas durava tempo suficiente para entrar — o jogador ainda estava acomodando o leque, com os
+   dedos por cima do índice, e o sistema já aceitava. Os 2 s usam a estabilidade como sinal de
+   "terminei de organizar": não dá para exigir 9 ou 10 cartas, porque nem sempre o leque está todo
+   aberto, mas enquanto a mão se mexe a leitura muda o tempo todo e não estabiliza. Custo: compra e
+   descarte demoram ~1,2 s a mais para aparecer.
 
    Até 2026-07-30 ele **travava** a primeira mão de exatamente 9 e segurava até o botão, para o
    overlay nunca oscilar numa live. Trocado a pedido do usuário: o custo era clicar a cada carta
@@ -82,20 +135,36 @@ congela o estado**, não zera. Só ausência *relativa* (outras cartas visíveis
 
 ### Estado do jogo (`app/tracker.py`)
 
-Código puro, sem OpenCV/YOLO — é onde ficam os testes. `on_stable_hand` só aceita conjuntos de
-`hand_size` ou `hand_size + 1`; qualquer outro tamanho é detecção ruim e é ignorado sem corromper
-a referência. Compra do lixo × do monte sai de `_discard_history`: se a carta nova na mão já
-passou pelo topo do lixo, `source = "lixo"` (overlay mostra o selo). `undo_last` e `correct_event`
-desfazem também o efeito no histórico do lixo, para a mesma carta poder ser detectada de novo.
+Código puro, sem OpenCV/YOLO — é onde ficam os testes.
+
+A entrada em uso é **`on_hand_changed`**: compara a mão atual com a anterior (`Counter`, não
+`frozenset` — gêmeas dos 2 baralhos contam duas vezes) e emite `draw` se entrou exatamente uma
+carta, `discard` se saiu exatamente uma. Troca simultânea ou salto de várias cartas é leitura
+instável: a referência é atualizada e nenhum evento sai. Mão vazia zera a referência sem emitir
+nada — quando ela voltar, a primeira leitura vira a nova base.
+
+Compra do lixo × do monte sai de `_discard_history`: se a carta nova na mão já passou pelo topo do
+lixo, `source = "lixo"` (overlay mostra o selo). `undo_last` e `correct_event` desfazem também o
+efeito no histórico do lixo, para a mesma carta poder ser detectada de novo.
+
+`on_stable_hand` e `on_stable_top_card` são o modelo ANTIGO, de duas câmeras, e **não são mais
+chamados pelo app** — só por `scripts/demo_server.py` e pelos testes. Ver "Código morto" nas notas.
 
 ## Detecção: limiar baixo é de propósito
 
 `config.min_confidence = 0.30`. Quem filtra ruído é a votação temporal, não o limiar — limiar alto
-cortava cartas reais de confiança média. `confirm_confidence = 0.85` só marca o evento como
-"confirmar?" no painel (amarelo). Os parâmetros do leque foram **medidos neste setup**: jitter da
-mesma carta entre frames = 3 px (p95 8 px), espaçamento mínimo entre cantos vizinhos = 47 px →
-`fan_match_dist = 30` (folga de 3.7× sobre o jitter, 1.6× de margem contra casar na vaga do
-vizinho). Ao mexer nesses números, meça de novo com `dump_dets.py` e registre no commit.
+cortava cartas reais de confiança média.
+
+`fan_match_dist = 50`, **re-medido em 2026-07-30** com o leque grande no quadro e segurado na mão:
+jitter da mesma carta = 29,5 px médio / 66 px p95; espaçamento entre vizinhas = 44 px mín, 69 px
+p05, 111 px p50. (Os 30 px de antes vinham do setup antigo, com o leque longe: jitter de 3 px,
+p95 8 px, espaçamento 47 px.) 50 px atende o caso típico — acima do jitter médio e abaixo do
+espaçamento p05. Não existe valor que atenda os dois EXTREMOS; ver "Leque parado vale mais que
+qualquer parâmetro". Ao mexer nesses números, meça de novo com `dump_dets.py` e registre no commit.
+
+`confirm_confidence = 0.85` marcaria o evento como "confirmar?" no painel (amarelo), mas hoje é
+**letra morta**: `on_hand_changed` emite sempre com confiança 1.0, então nenhum evento sai
+pendente. Quem carregava a confiança era `on_stable_top_card`, do modelo de duas câmeras.
 
 `hand_cam_index = 1`, `discard_cam_index = 0` — trocá-los faz o leque ser consumido pelo pipeline
 de descarte (que só extrai a carta mais confiante) e a mão exibida nunca recebe nada.
@@ -275,6 +344,18 @@ O viés de centro zerando é a confirmação direta de que o modelo aprendeu a c
 pip inteiro. Q♣→Q♠ (100% de acerto depois, era o erro reproduzível ao vivo) sumiu.
 O erro dominante passou a ser de **valor**, não de naipe — pior classe hoje: 5♠ (68,2%).
 
+**Retreinos de 2026-07-30** (duas rodadas, backups `cards_backup_3.pt` e `cards_backup_4.pt`):
+
+1. *Peso nos ranks fracos.* `generate_fans.py` sorteava as 52 cartas por igual; passou a dar
+   `PESO_RANK_FRACO = 2.5` aos ranks que a medição apontou como piores (A, 3, 4, 5, 8), que eram
+   também os das confusões dominantes (5→3, A↔4, 8→6). Medido no MESMO conjunto de validação:
+   classe correta 96,6% → **97,9%**; naipe na mesma cor 1,5% → 1,1%; leque aberto 92,9% → 95,3%.
+   Os cinco alvos subiram (A +2,1, 4 +1,9, 3 +1,9, 5 +1,6, 8 +1,0). **Custo mecânico de
+   sobre-amostrar: alguém paga a conta** — o J caiu de 95,3% para 94,2% e virou o pior rank.
+2. *30% de dado real rotulado pela ORDEM* (213 frames, contra 6% antes). Sem número offline para
+   essa: `eval_classes.py` roda em sintético e não mede ganho de dado real. Validada ao vivo — a
+   confusão A↔4, que sobreviveu a tudo antes, "quase não confunde mais".
+
 Cuidado ao retreinar: `finetune_local.py` passa `lr0=0.0003`, mas o Ultralytics usa
 `optimizer='auto'` e **ignora esse valor** ("optimizer=auto found, ignoring 'lr0'"),
 escolhendo AdamW com lr≈0.00018. A intenção do código não é honrada; se o lr importar,
@@ -291,9 +372,22 @@ Meta de aceite do projeto: ≥95% dos descartes e ≥90% das compras corretos nu
 
 - A webcam não pode estar em uso pelo OBS/navegador. `CameraStream` reabre sozinha a cada 2 s se
   a câmera estiver ocupada ou cair; usa `CAP_DSHOW` + MJPG (YUY2 satura o USB em 1080p+).
-- `app/hand_view.py` (`HandView`, histerese por carta) e `detector.hand_card_instances` são
-  **código morto**: substituídos por `FanReader` + `StableHand`, importados só pelos próprios
-  testes. O docstring de `tracker.set_hand_display` ainda cita `HandView` — desatualizado.
+- **Código morto** (nada disto é chamado por `app/main.py`; a suíte fica verde porque os testes o
+  importam direto, o que esconde que morreu). Antes de "consertar" qualquer um deles, confira se
+  está no caminho de verdade:
+
+  | símbolo | substituído por | ainda usado em |
+  |---|---|---|
+  | `app/hand_view.py` (`HandView`) | `FanReader` + `StableHand` | `tests/test_hand_view.py` |
+  | `detector.hand_card_instances` | `hand_instances` | testes |
+  | `detector.pick_top_card`, `detector.hand_codes` | — (eram do pipeline do monte) | testes |
+  | `app/stability.py` (`StabilityFilter`) | `StableHand` | `tests/test_stability.py` |
+  | `tracker.on_stable_top_card`, `tracker.on_stable_hand` | `tracker.on_hand_changed` | `scripts/demo_server.py`, testes |
+  | `config.stable_frames`, `config.hand_absent_frames` | — | `tests/test_config.py` |
+
+  Os cinco últimos morreram junto com a segunda câmera em `f5fdf64`. `scripts/demo_server.py`
+  (partida simulada) ainda fala a API velha e por isso continua funcionando — mas exercita um
+  caminho que o app real não usa mais.
 - `assets/cards/` é git-ignored; sem rodar `scripts/download_assets.py` os overlays ficam com
   imagens quebradas.
 - Docs de origem em `docs/superpowers/`: o spec (`specs/`) descreve a intenção aprovada; o plano

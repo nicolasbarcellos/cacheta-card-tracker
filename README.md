@@ -11,8 +11,8 @@ webcam → YOLO (GPU) → tracker (estado do jogo) → FastAPI + WebSocket
                                                     └── /painel       → controle e correção
 ```
 
-- **Mão ao vivo:** leque com as cartas detectadas, com histerese por carta (fantasmas expiram, mão abaixada congela) e suporte a **2 baralhos** (gêmeas separadas pela geometria dos cantos).
-- **Compra/descarte:** eventos de turno via diff da mão + carta do topo do lixo (requer segunda webcam).
+- **Mão ao vivo:** leque com as cartas detectadas, na ordem física da esquerda para a direita, com votação temporal por posição (fantasmas expiram, mão abaixada congela) e suporte a **2 baralhos** (gêmeas separadas pela geometria dos cantos).
+- **Compra/descarte:** eventos de turno pela **mudança da mão**, com uma câmera só — o leque que cresce uma carta é uma compra, o que encolhe uma é um descarte. A câmera do descarte é opcional e serve só de preview no painel.
 - **Painel:** preview das câmeras com as detecções, correção manual, desfazer, pausa e nova rodada.
 
 ## Setup
@@ -60,6 +60,21 @@ python training/finetune_local.py   # 6. treina com sintético + real e publica
 O treino mistura as duas fontes: os leques sintéticos dão volume e variedade,
 os frames reais ancoram o modelo na sua câmera e iluminação. Detalhes e
 scripts de diagnóstico em [`training/README.md`](training/README.md).
+
+**Se uma carta específica erra sempre**, o passo 4 não resolve: o modelo anota
+com o próprio erro, você apaga a foto na revisão e a carta nunca aprende. Use
+`capture_rotulado.py`, que rotula pela ORDEM em que você informa a mão em vez
+de perguntar ao modelo:
+
+```powershell
+python training/capture_rotulado.py "AS 4S AH 4H AD 4D AC 4C KS" 60
+```
+
+Para comparar o modelo novo com o anterior (no mesmo conjunto de validação):
+
+```powershell
+python training/eval_classes.py models/cards.pt 150
+```
 
 ## Testes
 
