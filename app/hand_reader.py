@@ -238,7 +238,58 @@ class FanReader:
                 s["misses"] += 1
         self._slots = [s for s in self._slots if s["misses"] < self.expire]
 
+        self._funde_vagas_gemeas()
         return self._recompute()
+
+    def _rotulo_bruto(self, s) -> str | None:
+        """O que a vaga é hoje: o rótulo exibido, ou o mais votado se não há."""
+        if s["label"]:
+            return s["label"]
+        if not s["votes"]:
+            return None
+        totals: Counter = Counter()
+        for code, confidence in s["votes"]:
+            totals[code] += confidence
+        return max(totals.items(), key=lambda kv: (kv[1], kv[0]))[0]
+
+    def _funde_vagas_gemeas(self):
+        """Duas vagas vizinhas com o MESMO rótulo são a mesma carta.
+
+        É o outro lado da regra de uma-detecção-por-vaga, e a brecha que ela
+        deixava: aquela regra descarta a leitura repetida quando as duas
+        DISPUTAM a mesma vaga. Se as duas vagas já existirem — cada detecção
+        casando com a sua — não há disputa nenhuma e a duplicata se perpetua.
+        Medido ao vivo: o A♥ ficou em duas vagas a 48 px uma da outra
+        (pesos 19.77 e 4.66), a mão exibida saiu com dois ases de copas e o
+        tracker emitiu compra fantasma do próprio ás.
+
+        O raio é o mesmo `match_dist` do casamento, e isso não ameaça as
+        gêmeas legítimas dos dois baralhos: cantos vizinhos num leque real
+        ficam a 44-111 px (p05 = 69), bem acima dele. Abaixo de `match_dist`
+        duas detecções já cairiam na mesma vaga de qualquer jeito.
+
+        Fica a vaga mais FORTE (maior confiança acumulada). Os votos da fraca
+        são descartados em vez de somados: eles são leitura do mesmo canto,
+        então somar seria contar a mesma evidência duas vezes.
+        """
+        if len(self._slots) < 2:
+            return
+        ordenadas = sorted(self._slots,
+                           key=lambda s: -self._weight(s["votes"]))
+        mantidas: list[dict] = []
+        for s in ordenadas:
+            rotulo = self._rotulo_bruto(s)
+            gemea = False
+            for k in mantidas:
+                if rotulo is None or self._rotulo_bruto(k) != rotulo:
+                    continue
+                d = ((k["x"] - s["x"]) ** 2 + (k["y"] - s["y"]) ** 2) ** 0.5
+                if d < self.match_dist:
+                    gemea = True
+                    break
+            if not gemea:
+                mantidas.append(s)
+        self._slots = mantidas
 
     @staticmethod
     def _weight(votes) -> float:

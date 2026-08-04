@@ -344,6 +344,35 @@ def test_same_corner_read_twice_does_not_duplicate_the_card():
     assert r.cards == ["AS", "2H", "3D"]
 
 
+def test_two_close_slots_with_the_same_label_are_merged():
+    """A brecha da regra de uma-por-vaga: vagas gemeas JA estabelecidas.
+
+    Aquela regra descarta a leitura repetida quando as duas DISPUTAM a mesma
+    vaga. Se as duas vagas ja existem - cada deteccao casando com a sua - nao ha
+    disputa e a duplicata se perpetua. Medido ao vivo: o AH ficou em duas vagas
+    a 48px uma da outra (pesos 19.77 e 4.66), a mao saiu com dois ases de copas
+    e o tracker emitiu compra fantasma do proprio as.
+    """
+    r = FanReader(min_appear=3, expire=20, window=30, match_dist=50)
+    # as duas nascem JUNTAS, a 48px: cada deteccao casa com a sua vaga e a
+    # regra de uma-por-vaga nunca chega a ser acionada
+    for _ in range(15):
+        r.update([d("AS", 100), d("AS", 148), d("2H", 400)])
+    assert r.cards == ["AS", "2H"]
+
+
+def test_twins_far_apart_survive_the_merge():
+    """Gemeas dos 2 baralhos nao podem ser fundidas.
+
+    Cantos vizinhos num leque real ficam a 44-111px (p05 = 69), acima do
+    match_dist - a fusao so alcanca o que ja cairia na mesma vaga.
+    """
+    r = FanReader(min_appear=3, expire=20, window=30, match_dist=50)
+    for _ in range(15):
+        r.update([d("7H", 100), d("7H", 300), d("2S", 500)])
+    assert r.cards == ["7H", "7H", "2S"]
+
+
 def test_the_closest_detection_keeps_the_slot_whatever_the_order():
     """A disputa pela vaga se resolve por DISTANCIA, nao pela ordem da lista.
 
