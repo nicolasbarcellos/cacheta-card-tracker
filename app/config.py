@@ -3,10 +3,16 @@ from dataclasses import dataclass
 
 @dataclass
 class Config:
-    # 2 webcams disponíveis. O índice 1 é a que enquadra o leque do jogador
-    # (câmera da MÃO); a 0 sobra para o monte de descarte.
-    discard_cam_index: int = 0
-    hand_cam_index: int = 1
+    # 2 webcams disponíveis. A da MÃO (a que importa) é a USB externa; a interna
+    # do notebook sobra para o monte de descarte.
+    #
+    # ATENÇÃO: o índice NÃO é fixo. O Windows renumera as câmeras ao
+    # desconectar/reconectar o USB ou reiniciar — em 2026-08-04 a externa era a 1
+    # e virou a 0, e o app passou a mostrar o rosto do jogador como "mão".
+    # Sintoma: o preview "Câmera da mão" do painel mostra a câmera errada. Basta
+    # trocar os dois números aqui (ou rodar scripts/check_cams.py para conferir).
+    discard_cam_index: int = 1
+    hand_cam_index: int = 0
     frame_width: int = 1920
     frame_height: int = 1080
     detect_imgsz: int = 1280  # resolução da inferência (cantos são pequenos)
