@@ -1,5 +1,5 @@
 {
-  "inicio": "2026-08-11 21:12:12",
+  "inicio": "2026-08-11 21:16:14",
   "video": "mao.avi",
   "config": {
     "discard_cam_index": 1,
@@ -15,11 +15,11 @@
     "stable_frames": 10,
     "hand_absent_frames": 45,
     "fan_match_dist": 50.0,
-    "fan_window": 30,
-    "fan_min_appear": 5,
-    "fan_expire": 24,
+    "fan_window": 60,
+    "fan_min_appear": 10,
+    "fan_expire": 48,
     "fan_win_margin": 2.5,
-    "lock_frames": 30,
+    "lock_frames": 60,
     "hand_size": 9,
     "server_host": "127.0.0.1",
     "server_port": 8000

@@ -138,8 +138,11 @@ def resumo(res: dict, cons: dict, rotulo: str = ""):
     if res["fps"]:
         # sem caracteres fora do cp1252: o terminal do Windows quebra a saída
         # inteira num UnicodeEncodeError quando o stdout é redirecionado
-        print(f"  {res['frames']} frames em {res['duracao']:.0f}s = "
-              f"{res['fps']:.1f} fps | lock_frames={config.lock_frames} ~ "
+        vazios = res["frames"] - res["com_imagem"] if res["com_imagem"] else 0
+        nota_vazios = f" (+{vazios} voltas sem imagem)" if vazios else ""
+        print(f"  {res['com_imagem'] or res['frames']} frames em "
+              f"{res['duracao']:.0f}s = {res['fps']:.1f} fps{nota_vazios} | "
+              f"lock_frames={config.lock_frames} ~ "
               f"{config.lock_frames / res['fps']:.1f}s")
     print(f"  {cons['compras']} compras · {cons['descartes']} descartes · "
           f"{cons['turnos_completos']} turnos completos")

@@ -55,12 +55,15 @@ def roda(registros: list[dict]) -> dict:
     eventos: list[dict] = []
     maos: list[dict] = []
     frames = 0
+    com_imagem = 0
     ultimo_ts = 0.0
 
     for rec in registros:
         if rec["t"] != "frame":
             continue
         frames += 1
+        if rec.get("v", -1) >= 0:
+            com_imagem += 1
         i, ts = rec["i"], rec.get("ts", 0.0)
         ultimo_ts = max(ultimo_ts, ts)
         antes = len(tracker.events)
@@ -72,8 +75,14 @@ def roda(registros: list[dict]) -> dict:
             eventos.append({"i": i, "ts": ts, "ev_id": ev.id, "tipo": ev.type,
                             "carta": ev.card.code, "fonte": ev.source})
 
-    return {"frames": frames, "duracao": ultimo_ts,
-            "fps": frames / ultimo_ts if ultimo_ts else 0.0,
+    # O FPS que importa é o das voltas COM IMAGEM: é ele que converte os
+    # parâmetros contados em frames para segundos. Contar as voltas vazias
+    # (câmera aquecendo ou caída, quando o laço gira a milhares por segundo
+    # sem inferência) reportava 253 fps numa partida que rodou a 35, e a
+    # tradução de `lock_frames` saía dez vezes menor que a real.
+    uteis = com_imagem or frames
+    return {"frames": frames, "com_imagem": com_imagem, "duracao": ultimo_ts,
+            "fps": uteis / ultimo_ts if ultimo_ts else 0.0,
             "eventos": eventos, "maos": maos}
 
 

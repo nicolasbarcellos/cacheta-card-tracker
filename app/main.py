@@ -94,10 +94,17 @@ def vision_loop(cams, detector, tracker, annotated, running,
     fps = FpsMeter()
     while running.is_set():
         frame = cams["hand"].read()
-        dets_hand = []
-        if frame is not None:                # None = câmera ainda aquecendo
-            dets_hand = detector.detect(frame)
-            annotated["hand"] = draw_boxes(frame, dets_hand)
+        if frame is None:
+            # SEM IMAGEM não é "mão fora do quadro". A câmera devolve None
+            # enquanto aquece e quando cai, e alimentar o pipeline com lista
+            # vazia nesses instantes faria as vagas expirarem por um problema
+            # de USB, não por o jogador ter abaixado as cartas. Medido em
+            # 2026-08-11: os ~20 s de aquecimento produziram 122 mil voltas
+            # vazias (o laço gira a 6000/s sem inferência), que entulhavam a
+            # gravação e faziam o FPS médio sair 253 em vez de 35.
+            continue
+        dets_hand = detector.detect(frame)
+        annotated["hand"] = draw_boxes(frame, dets_hand)
 
         # A câmera do monte é SÓ preview do painel: não gera evento nenhum
         # (se gerasse, o descarte sairia duplicado). Rodar o modelo nela era
