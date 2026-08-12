@@ -58,10 +58,23 @@ class Config:
     # compensar o movimento GLOBAL do leque antes de casar as vagas (a mão
     # translada o leque inteiro junto, não cada carta em separado); enquanto
     # isso não existir, apoiar a mão reduz muito o jitter.
+    # ATENÇÃO ao mexer nos contadores em FRAMES abaixo: eles são constantes de
+    # TEMPO disfarçadas. Todos foram afinados contra ações físicas do jogador
+    # (terminar de organizar o leque, a mão passar na frente, fechar o leque
+    # para encaixar a carta), então o que vale é a duração — e a duração
+    # depende do FPS, que ninguém tinha medido.
+    #
+    # MEDIDO em 2026-08-11 com o FpsMeter: 45 fps. O CLAUDE.md assumia ~15, e
+    # a validação ao vivo de 2026-08-04 rodou a ~22 (o laço ainda gastava
+    # metade da inferência na câmera do descarte). Ao desligar aquela detecção
+    # o FPS dobrou e cada janela passou a durar METADE — desfazendo na prática
+    # o 81847b8, que subiu lock_frames de 12 para 30 justamente porque 0,55s
+    # era curto demais. Os valores abaixo são o DOBRO dos antigos, para
+    # reproduzir as durações já validadas a 45 fps.
     fan_match_dist: float = 50.0   # px: casar detecção à mesma vaga entre frames
-    fan_window: int = 30           # frames recentes que votam por vaga
-    fan_min_appear: int = 5        # aparições p/ uma vaga contar (mata fantasmas)
-    fan_expire: int = 24           # frames de ausência p/ a vaga sumir. generoso
+    fan_window: int = 60           # ~1,3s de votos por vaga (era 30 @ ~22fps)
+    fan_min_appear: int = 10       # aparições p/ uma vaga contar (mata fantasmas)
+    fan_expire: int = 48           # ~1,1s de ausência p/ a vaga sumir. generoso
     #                                de propósito: segura a carta que pisca. quem
     #                                impede vaga órfã de duplicar agora é o teto
     #                                de vagas do FanReader (= hand_size)
@@ -83,7 +96,11 @@ class Config:
     # para exigir 9 ou 10 cartas, porque nem sempre o leque está todo aberto,
     # mas enquanto a mão se mexe a leitura muda o tempo todo e não estabiliza.
     # Custo: compra e descarte demoram ~1,2s a mais para aparecer.
-    lock_frames: int = 30
+    #
+    # 60 desde 2026-08-11: os 30 valiam ~1,4s a 22 fps e passaram a valer 0,7s
+    # depois que o FPS dobrou — perto dos 0,55s que já tinham sido rejeitados.
+    # Ver o bloco sobre FPS logo acima.
+    lock_frames: int = 60
     hand_size: int = 9
     server_host: str = "127.0.0.1"
     server_port: int = 8000

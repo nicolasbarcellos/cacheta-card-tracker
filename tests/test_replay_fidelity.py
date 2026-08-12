@@ -24,6 +24,13 @@ from app.tracker import GameTracker
 HAND9 = ["AS", "2S", "3S", "4H", "5H", "6H", "7D", "8D", "9D"]
 BASE = list(zip(HAND9, range(0, 900, 100)))
 
+# Derivado da config, nunca fixo: estes contadores são constantes de TEMPO, e
+# afiná-los (o que o replay existe para permitir) não pode quebrar o teste que
+# guarda a fidelidade. Somar em vez de escolher um: uma carta só sai da mão
+# depois de a vaga expirar E o score do StableHand decair E a nova leitura
+# ficar estável.
+ASSENTA = config.lock_frames + config.fan_expire + config.fan_window
+
 
 def mao(pares):
     """Detecções com a geometria REAL do índice de canto: 44x84, estreito e alto.
@@ -53,9 +60,9 @@ def test_replay_reproduz_a_partida_gravada(tmp_path):
     # a fidelidade do replay e não a reacomodação das vagas
     descarte = [p for p in BASE if p[0] != "9D"] + [("KC", 900)]
 
-    alimenta(BASE, 60)
-    alimenta(compra, 60)
-    alimenta(descarte, 120)     # a vaga do 9D precisa expirar antes de sair
+    alimenta(BASE, ASSENTA)
+    alimenta(compra, ASSENTA)
+    alimenta(descarte, ASSENTA)   # a vaga do 9D precisa expirar antes de sair
     rec.close()
 
     ao_vivo = [(e.type, e.card.code) for e in tracker.events]
@@ -63,7 +70,7 @@ def test_replay_reproduz_a_partida_gravada(tmp_path):
 
     res = roda(carrega(rec.dir / "sessao.jsonl"))
     assert [(e["tipo"], e["carta"]) for e in res["eventos"]] == ao_vivo
-    assert res["frames"] == 240
+    assert res["frames"] == 3 * ASSENTA
 
 
 def test_gravacao_guarda_as_deteccoes_brutas(tmp_path):
@@ -89,8 +96,8 @@ def test_gravacao_amarra_o_evento_ao_frame_que_o_gerou(tmp_path):
     rec = SessionRecorder(base_dir=tmp_path, gravar_video=False, config=config)
     tracker = GameTracker(hand_size=config.hand_size)
     hand_view, hand_lock = build_pipeline()
-    for n in range(120):
-        pares = BASE if n < 60 else BASE + [("KC", 900)]
+    for n in range(2 * ASSENTA):
+        pares = BASE if n < ASSENTA else BASE + [("KC", 900)]
         dets = mao(pares)
         i = rec.frame(dets)
         process_frame(dets, tracker, hand_view, hand_lock,

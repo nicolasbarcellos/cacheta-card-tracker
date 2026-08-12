@@ -1,0 +1,27 @@
+{
+  "inicio": "2026-08-11 21:12:12",
+  "video": "mao.avi",
+  "config": {
+    "discard_cam_index": 1,
+    "hand_cam_index": 0,
+    "frame_width": 1920,
+    "frame_height": 1080,
+    "detect_imgsz": 1280,
+    "model_path": "models/cards.pt",
+    "min_confidence": 0.3,
+    "confirm_confidence": 0.85,
+    "agnostic_nms": false,
+    "detect_discard_cam": false,
+    "stable_frames": 10,
+    "hand_absent_frames": 45,
+    "fan_match_dist": 50.0,
+    "fan_window": 30,
+    "fan_min_appear": 5,
+    "fan_expire": 24,
+    "fan_win_margin": 2.5,
+    "lock_frames": 30,
+    "hand_size": 9,
+    "server_host": "127.0.0.1",
+    "server_port": 8000
+  }
+}
