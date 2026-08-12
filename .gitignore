@@ -22,3 +22,9 @@ training/frame_*.jpg
 
 # pesos baixados fora de models/
 yolo*.pt
+
+# gravações de partida: o vídeo tem gigabytes e o jsonl, dezenas de MB. O
+# gabarito (jogadas reais, revisadas à mão) e o meta.json ficam versionados —
+# são leves e são a medição em si, que não se quer perder.
+gravacoes/*/mao.avi
+gravacoes/*/sessao*.jsonl

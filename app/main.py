@@ -1,4 +1,6 @@
+import argparse
 import threading
+import time
 
 import uvicorn
 
@@ -7,9 +9,39 @@ from app.cards import Card
 from app.config import config
 from app.detector import CardDetector, draw_boxes, hand_instances
 from app.hand_reader import FanReader
+from app.recorder import SessionRecorder
 from app.server import create_app
 from app.stable_hand import StableHand
 from app.tracker import GameTracker
+
+
+class FpsMeter:
+    """Taxa real do laço de visão.
+
+    Não é vaidade de benchmark: TODOS os parâmetros de tempo do pipeline são
+    contados em FRAMES (`lock_frames=30`, `fan_window=30`, `fan_expire=24`), e
+    a taxa do laço é o fator de conversão para segundos. Ela varia com a carga
+    da GPU e com o que mais estiver aberto na máquina — sem medir, "2 s para
+    trocar a mão" é chute, e um parâmetro afinado numa sessão pode significar
+    outra coisa na seguinte.
+    """
+
+    def __init__(self, intervalo=5.0):
+        self.intervalo = intervalo
+        self._n = 0
+        self._t = time.time()
+        self.fps = 0.0
+
+    def tick(self):
+        self._n += 1
+        dt = time.time() - self._t
+        if dt >= self.intervalo:
+            self.fps = self._n / dt
+            print(f"[fps] {self.fps:.1f}  "
+                  f"(lock_frames={config.lock_frames} ~ "
+                  f"{config.lock_frames / self.fps:.1f}s)", flush=True)
+            self._n = 0
+            self._t = time.time()
 
 
 def log_lock(hand_view, hand_lock):
@@ -27,41 +59,75 @@ def log_lock(hand_view, hand_lock):
               f"n={s['n']:3d} miss={s['misses']:2d}  {top}", flush=True)
 
 
-def process_frame(detections_hand, tracker, hand_view, hand_lock):
+def process_frame(detections_hand, tracker, hand_view, hand_lock,
+                  recorder=None, i=0, verbose=True):
     """Um passo do laço de visão. Puro: recebe detecções, atualiza o tracker.
 
     Compra e descarte saem os DOIS da câmera da mão, pela mudança do leque:
     cresceu uma carta = compra, encolheu uma = descarte. A câmera do monte não
     gera evento — se gerasse, o descarte sairia duplicado (uma vez pela mão,
     outra pelo monte).
+
+    `recorder` e `i` são só instrumentação: é aqui que a mão exibida e os
+    eventos ficam amarrados ao frame que os produziu, que é o que permite ao
+    `scripts/revisar_partida.py` mostrar a imagem do instante do erro.
+    `scripts/replay.py` chama esta mesma função — por isso o pipeline offline
+    é o pipeline de verdade, e não uma reimplementação que pode divergir.
     """
-    # FanReader = leitura ao vivo (votada por posição); StableHand = histerese
     hand_view.update(hand_instances(detections_hand))
     if hand_lock.update(hand_view.cards):
         cards = [Card.from_label(c) for c in hand_lock.cards]
+        antes = len(tracker.events)
         tracker.set_hand_display(cards)
         tracker.on_hand_changed(cards)
-        log_lock(hand_view, hand_lock)
+        if verbose:
+            log_lock(hand_view, hand_lock)
+        if recorder is not None:
+            recorder.mao(i, hand_lock.cards)
+            for ev in tracker.events[antes:]:
+                recorder.evento(i, {"ev_id": ev.id, "tipo": ev.type,
+                                    "carta": ev.card.code, "fonte": ev.source})
 
 
 def vision_loop(cams, detector, tracker, annotated, running,
-                hand_view, hand_lock):
+                hand_view, hand_lock, recorder=None):
+    fps = FpsMeter()
     while running.is_set():
-        detections = {"discard": [], "hand": []}
-        for name in detections:
-            frame = cams[name].read()
-            if frame is None:
-                continue  # câmera ainda aquecendo
-            dets = detector.detect(frame)
-            detections[name] = dets
-            annotated[name] = draw_boxes(frame, dets)
-        # a câmera do monte continua sendo lida e anotada para o preview do
-        # painel, mas não alimenta mais evento nenhum
-        process_frame(detections["hand"], tracker, hand_view, hand_lock)
+        frame = cams["hand"].read()
+        dets_hand = []
+        if frame is not None:                # None = câmera ainda aquecendo
+            dets_hand = detector.detect(frame)
+            annotated["hand"] = draw_boxes(frame, dets_hand)
+
+        # A câmera do monte é SÓ preview do painel: não gera evento nenhum
+        # (se gerasse, o descarte sairia duplicado). Rodar o modelo nela era
+        # metade do custo de inferência gasto em nada — e como os parâmetros
+        # do pipeline são contados em frames, isso dobrava a duração REAL de
+        # cada janela de votação. Ligue `detect_discard_cam` se quiser as
+        # caixas no preview de volta para diagnosticar aquela câmera.
+        frame_discard = cams["discard"].read()
+        if frame_discard is not None:
+            if config.detect_discard_cam:
+                dets = detector.detect(frame_discard)
+                annotated["discard"] = draw_boxes(frame_discard, dets)
+            else:
+                annotated["discard"] = frame_discard
+
+        # o índice vem ANTES do processamento: é ele que amarra a mão e os
+        # eventos ao frame exato que os gerou
+        i = recorder.frame(dets_hand, frame) if recorder is not None else 0
+        process_frame(dets_hand, tracker, hand_view, hand_lock,
+                      recorder=recorder, i=i)
+        fps.tick()
 
 
-def main():
-    tracker = GameTracker(hand_size=config.hand_size)
+def build_pipeline():
+    """Monta leitor + histerese com a config vigente.
+
+    Existe para o replay offline montar EXATAMENTE o mesmo pipeline do app —
+    duplicar essa montagem em `scripts/replay.py` faria a medição offline
+    divergir do que roda na partida sem ninguém perceber.
+    """
     hand_view = FanReader(match_dist=config.fan_match_dist,
                           window=config.fan_window,
                           min_appear=config.fan_min_appear,
@@ -73,6 +139,22 @@ def main():
                           win_margin=config.fan_win_margin)
     hand_lock = StableHand(hand_size=config.hand_size,
                            lock_frames=config.lock_frames)
+    return hand_view, hand_lock
+
+
+def main():
+    ap = argparse.ArgumentParser(description="Cacheta card tracker")
+    ap.add_argument("--gravar", action="store_true",
+                    help="grava a partida em gravacoes/<data> para replay "
+                         "offline e medição da meta de aceite")
+    ap.add_argument("--sem-video", action="store_true",
+                    help="com --gravar, salva só as detecções (~5 MB) em vez "
+                         "do vídeo (~7 GB). Barato, mas impede testar um "
+                         "MODELO novo contra a partida gravada")
+    args = ap.parse_args()
+
+    tracker = GameTracker(hand_size=config.hand_size)
+    hand_view, hand_lock = build_pipeline()
     annotated: dict = {}
     cams = {
         "discard": CameraStream(config.discard_cam_index,
@@ -83,6 +165,12 @@ def main():
     detector = CardDetector(config.model_path, config.min_confidence,
                             imgsz=config.detect_imgsz,
                             agnostic_nms=config.agnostic_nms)
+
+    recorder = None
+    if args.gravar:
+        recorder = SessionRecorder(gravar_video=not args.sem_video,
+                                   config=config)
+        print(f"gravando em {recorder.dir}", flush=True)
 
     def reset_filters():
         hand_view.reset()
@@ -97,7 +185,7 @@ def main():
     thread = threading.Thread(
         target=vision_loop,
         args=(cams, detector, tracker, annotated, running,
-              hand_view, hand_lock),
+              hand_view, hand_lock, recorder),
         daemon=True)
     thread.start()
 
@@ -109,6 +197,8 @@ def main():
         running.clear()
         for cam in cams.values():
             cam.stop()
+        if recorder is not None:
+            recorder.close()
 
 
 if __name__ == "__main__":

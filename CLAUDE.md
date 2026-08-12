@@ -15,6 +15,7 @@ pip install -r requirements.txt
 python scripts/download_assets.py     # PNGs das 52 cartas em assets/cards/ (git-ignored)
 
 python -m app.main                    # app real (precisa das 2 webcams livres)
+python -m app.main --gravar           # idem, gravando a partida para medir depois
 python scripts/demo_server.py         # partida simulada, sem webcam — para mexer no overlay/painel
 
 python -m pytest                      # suíte completa (rápida: só código puro)
@@ -440,6 +441,88 @@ glifo (cobria 71% do índice no 4C, 76% no AC — justamente A e 4, os valores q
 errava).
 
 Meta de aceite do projeto: ≥95% dos descartes e ≥90% das compras corretos numa partida de teste.
+
+## Medir a partida: gravar, repetir, dar nota
+
+O que travava a meta de aceite não era a precisão — era o **custo de cada tentativa**. Testar uma
+mudança de parâmetro exigia jogar outra partida de 20 minutos, e a partida seguinte é outra
+partida: a comparação misturava "parâmetro novo" com "jogo diferente". Sem gravação, um erro no
+minuto 12 deixava como único rastro o `print` do `log_lock`, que some com o terminal.
+
+```powershell
+python -m app.main --gravar                              # joga gravando
+python scripts/revisar_partida.py gravacoes/<data>       # gabarito (evento a evento)
+python scripts/replay.py gravacoes/<data> --gabarito     # a nota
+python scripts/replay.py gravacoes/<data> --varre lock_frames=20,30,45 --gabarito
+python scripts/replay.py gravacoes/<data> --redetectar models/cards_novo.pt
+```
+
+A gravação (`app/recorder.py`) guarda três coisas, cada uma habilitando um nível de experimento:
+
+| arquivo | permite | custo |
+|---|---|---|
+| `sessao.jsonl` (detecções **brutas**, antes do `hand_instances`) | mexer em qualquer parâmetro do pipeline, inclusive `MERGE_FACTOR` | ~dezenas de MB |
+| `mao.avi` (vídeo cru 1080p) | rodar um **modelo novo** contra a mesma partida | ~7 GB / 20 min |
+| `meta.json` (config vigente) | saber quais parâmetros produziram aqueles eventos | nada |
+
+As detecções são gravadas **brutas** de propósito: gravar as já deduplicadas consumiria o
+`MERGE_FACTOR` antes do replay, justamente o parâmetro do bug mais caro do projeto. E o vídeo é o
+frame **cru**, não o anotado — caixa verde desenhada em cima estraga a re-detecção, que é a razão
+de o vídeo existir.
+
+O vídeo é escrito numa thread com fila limitada e escrita **bloqueante**. Bloquear é escolha: se o
+disco não acompanhar, o FPS cai à vista e fica nos timestamps, em vez de o vídeo dessincronizar do
+JSONL em silêncio — o que estragaria a revisão sem dar sinal nenhum.
+
+### Fidelidade é a promessa que sustenta tudo
+
+`scripts/replay.py` chama o **próprio** `app.main.process_frame`, não uma reimplementação, e o
+núcleo mora em `app/replay.py` para ter teste. Sem override, o replay tem de reproduzir os eventos
+que saíram ao vivo — ele confere e imprime `fidelidade: OK`. Se divergir, existe estado que a
+gravação não captura e **nenhuma conclusão offline vale**. É o que `tests/test_replay_fidelity.py`
+guarda: qualquer entrada nova no `process_frame` que não seja gravada quebra esse teste.
+
+Limite que não é óbvio: as detecções gravadas já passaram pelo `min_confidence` da partida (0.30).
+O replay pode **subir** esse limiar (filtra o que foi gravado), nunca baixá-lo — para isso é
+preciso `--redetectar` a partir do vídeo.
+
+### A nota é sobre as JOGADAS, não sobre os eventos emitidos
+
+`app/scoring.py` (código puro, testado). A conta é
+
+```
+acerto = acertos / (acertos + carta_errada + perdidos)
+```
+
+O denominador são as jogadas que **aconteceram**. Se fosse "corretos entre os emitidos", um sistema
+que emitisse um único descarte na partida e acertasse aquele teria 100% e seria inútil — é o
+`test_evento_nenhum_e_zero_por_cento_e_nao_cem`. Fantasmas (evento sem jogada) saem em contagem
+própria: não baixam o acerto, mas sujam o overlay.
+
+O casamento com o gabarito é por **subsequência comum máxima**, não posição a posição: perder a
+terceira jogada desloca todas as seguintes, e uma comparação posicional marcaria a partida inteira
+como errada dali em diante — mediria o deslocamento, não o acerto. Nos buracos, uma jogada real e
+um evento do mesmo tipo lado a lado viram `carta_errada`; só o que sobra é perda ou fantasma.
+
+### Triagem sem gabarito: a alternância
+
+Na cacheta o turno é compra→descarte, sempre alternado. Duas compras seguidas significam ou compra
+fantasma ou descarte perdido — dá para achar erro **antes de revisar frame nenhum**, e é o que
+permite comparar duas configurações numa partida ainda não revisada. Não é medida de acerto: uma
+compra alternada e com a carta errada passa limpa. Serve para triagem.
+
+### FPS é variável escondida, não vaidade de benchmark
+
+**Todos** os parâmetros de tempo do pipeline são contados em FRAMES (`lock_frames=30`,
+`fan_window=30`, `fan_expire=24`), então a taxa do laço é o fator de conversão para segundos — e
+varia com a carga da GPU. Sem medir, "2 s para trocar a mão" é chute, e um parâmetro afinado numa
+sessão significa outra coisa na seguinte. O `FpsMeter` imprime a taxa e a tradução de `lock_frames`
+para segundos a cada 5 s; o replay recalcula a taxa exata pelos timestamps gravados.
+
+Na mesma linha, `detect_discard_cam = False` (2026-08-11): a câmera do monte é só preview do painel
+e não gera evento desde `f5fdf64`, mas o laço rodava o modelo nela a cada volta — metade da
+inferência gasta em nada, o que **dobrava a duração real de cada janela de votação**. Ligue apenas
+para diagnosticar aquela câmera.
 
 ## Notas
 

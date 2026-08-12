@@ -30,6 +30,13 @@ class Config:
     # desligado, o rótulo certo vence o voto ponderado em 8 das 9 vagas
     # (o 4♥ sai em 695 frames com confiança média 0.74).
     agnostic_nms: bool = False
+    # A câmera do monte é só preview do painel — não gera evento nenhum desde
+    # que compra e descarte passaram a sair da MUDANÇA do leque (f5fdf64).
+    # Rodar o modelo nela era metade da inferência gasta em nada, e como os
+    # parâmetros do pipeline são contados em FRAMES, cada janela de votação
+    # durava o dobro do tempo em segundos. Ligar só para diagnosticar aquela
+    # câmera (traz as caixas verdes de volta ao preview, ao custo do FPS).
+    detect_discard_cam: bool = False
     stable_frames: int = 10
     hand_absent_frames: int = 45  # ~3s sem ver a carta (com outras visíveis) = sai da mão
     # leitor do leque (votação temporal por posição)
