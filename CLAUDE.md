@@ -314,6 +314,40 @@ uma). Todas com **10 cartas** — é no instante da compra que o leque aperta e 
 Critério prático para conferir sem medir nada: no `/stream/hand`, **as caixas verdes não podem se
 encostar**. Duas coladas indicam onde vai falhar.
 
+### Na BORDA do quadro não nasce carta
+
+Medido na primeira partida gravada (2026-08-11, 9,3 min, 23 jogadas reais). A leitura acertou
+**100% das compras e 100% dos descartes** — nenhuma carta errada, nenhuma jogada perdida. Todo o
+erro foi **fantasma**: 5 eventos que não aconteceram, e os 5 vindos da mesma causa.
+
+Uma carta que desce abaixo do enquadramento chega ao modelo com o índice **amputado** pela borda,
+e ele palpita sobre meio glifo. As caixas do 4♦ fantasma saíam com `y2` exatamente 1080 (a altura
+do frame) e confiança mediana **0,43**, contra 0,93 das cartas inteiras. Só **2,0%** das detecções
+da partida ficavam coladas na borda, mas **34%** das do fantasma ficavam — 17× a taxa base.
+
+Dois sintomas opostos, mesma origem:
+
+- **Carta que nasce na borda** (4♦): vira vaga espúria. Numa mão de 9, vaga espúria é a décima —
+  e a décima é exatamente a que o teto `hand_size + 1` existe para PERMITIR, no instante da
+  compra. Rendeu quatro eventos falsos em cadeia (compra, descarte, compra "do lixo", descarte),
+  porque o descarte fantasma alimenta o `_discard_history`.
+- **Carta que sai pela borda** (3♦): o leque encolhe uma carta e sai um descarte que não houve.
+  A carta saiu do QUADRO, não da mão.
+
+`fan_borda = 8` px resolve o primeiro: detecção que encosta na zona morta **não pode criar vaga**,
+mas continua **votando em vaga existente** — suprimir o voto mataria a vaga mais rápido, que é o
+segundo sintoma. Medido contra a partida: 2 a 14 px dão resultado idêntico (4 dos 5 fantasmas
+somem, 100%/100% preservados); em 18 px começa a cortar carta legítima e um descarte sai errado.
+8 é o meio do platô. Custo assumido e testado: carta que **salta** para a borda (mais que
+`match_dist` de uma vez) some da mão em vez de criar vaga.
+
+O segundo sintoma continua aberto — e o conserto de verdade dos dois é **enquadramento**: o leque
+não pode encostar na borda de baixo.
+
+**Hipótese refutada na mesma medição**: subir o `min_confidence` não resolve. Varrido contra a
+partida real, 0,50 mata fantasma mas derruba os descartes de 100% para 81,8% (carta legítima de
+confiança média vira carta errada). Confirma com número o que o projeto já dizia. Fica em 0,30.
+
 ### A câmera da mão não pode pegar cartas na mesa
 
 Ela conta tudo o que vê. Um 10♣ largado no canto superior direito do quadro entrou na mão exibida

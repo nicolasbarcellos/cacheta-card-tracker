@@ -30,6 +30,7 @@ import argparse
 import json
 import sys
 import time
+from dataclasses import asdict
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -65,6 +66,30 @@ def aplica_overrides(pares: list[str]) -> dict:
         setattr(config, nome, convertido)
         aplicados[nome] = convertido
     return aplicados
+
+
+def diferencas_de_config(gravacao: Path, aplicados: dict) -> dict:
+    """O que mudou entre a config da gravação e a de agora.
+
+    A gravação carrega no `meta.json` a config que a produziu. Sem comparar,
+    a checagem de fidelidade acusaria divergência toda vez que um parâmetro
+    fosse afinado no `config.py` — e um aviso que grita sempre deixa de ser
+    lido, justamente o que não pode acontecer com este.
+    """
+    meta = gravacao / "meta.json"
+    if not meta.exists():
+        return dict(aplicados)
+    antiga = json.loads(meta.read_text(encoding="utf-8")).get("config") or {}
+    atual = asdict(config)
+    # Os dois sentidos: um parâmetro NOVO (ausente na gravação) muda o
+    # comportamento tanto quanto um alterado, e foi o que escapou na primeira
+    # versão — `fan_borda` nem existia quando a partida foi gravada, então
+    # comparar só as chaves antigas dizia "nada mudou".
+    mudou = {k: f"{antiga[k]} -> {v}" for k, v in atual.items()
+             if k in antiga and antiga[k] != v}
+    mudou.update({k: f"(novo) {v}" for k, v in atual.items() if k not in antiga})
+    mudou.update({k: f"-> {v}" for k, v in aplicados.items() if k not in mudou})
+    return mudou
 
 
 def carrega_gabarito(gravacao: Path, arg) -> list[dict] | None:
@@ -209,14 +234,20 @@ def main():
     res = roda(registros)
     resumo(res, consistencia(res["eventos"]), f"replay de {args.gravacao.name}")
 
-    if gravados and not aplicados and not args.redetectar:
-        # Sem override, o replay TEM de reproduzir a partida ao pé da letra.
-        # Se não reproduzir, existe estado que a gravação não captura — e aí
-        # nenhuma conclusão tirada offline vale para a partida real.
-        iguais = ([(e["tipo"], e["carta"]) for e in res["eventos"]]
-                  == [(e["tipo"], e["carta"]) for e in gravados])
-        print(f"  fidelidade: {'OK' if iguais else 'DIVERGIU'} "
-              f"({len(res['eventos'])} no replay × {len(gravados)} ao vivo)")
+    if gravados and not args.redetectar:
+        mudou = diferencas_de_config(args.gravacao, aplicados)
+        if mudou:
+            # Divergir é o ESPERADO quando a config mudou — foi para isso que
+            # o replay existe. Chamar isso de falha de fidelidade treinaria a
+            # ignorar o aviso, que é justamente o que não pode acontecer com
+            # ele: fora desse caso, divergência significa estado não gravado.
+            print(f"  config mudou desde a gravação, fidelidade não se "
+                  f"aplica: {mudou}")
+        else:
+            iguais = ([(e["tipo"], e["carta"]) for e in res["eventos"]]
+                      == [(e["tipo"], e["carta"]) for e in gravados])
+            print(f"  fidelidade: {'OK' if iguais else 'DIVERGIU'} "
+                  f"({len(res['eventos'])} no replay × {len(gravados)} ao vivo)")
 
     if gabarito:
         print(f"\nnota contra {len(gabarito)} jogadas reais:")

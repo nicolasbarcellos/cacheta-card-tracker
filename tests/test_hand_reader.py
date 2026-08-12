@@ -396,3 +396,79 @@ def test_reset_clears():
     r.update(fan(("AS", 100)))
     r.reset()
     assert r.cards == []
+
+
+# --- zona morta da borda do quadro -------------------------------------------
+#
+# Medido na partida de 2026-08-11: uma carta que desce abaixo do enquadramento
+# chega ao modelo com o índice AMPUTADO (caixa com y2 exatamente na altura do
+# frame), e ele palpita sobre meio glifo — confiança mediana 0.43 contra 0.93
+# das cartas inteiras. Nessa partida isso gerou um 4♦ que nunca existiu, e o
+# 4♦ rendeu QUATRO eventos falsos (compra, descarte, compra do lixo, descarte).
+#
+# O teto de vagas não barra esse caso: numa mão de 9, a vaga espúria é a
+# décima — exatamente a que o teto `hand_size + 1` existe para PERMITIR, para
+# o instante da compra.
+
+QUADRO = {"frame_w": 1920, "frame_h": 1080, "borda": 8}
+
+
+def test_deteccao_cortada_pela_borda_nao_cria_vaga():
+    r = FanReader(min_appear=3, window=20, max_slots=10, **QUADRO)
+    for _ in range(30):
+        r.update([d("AS", 500), d("KH", 700),
+                  # índice cortado pela borda de baixo: y2 == altura do frame
+                  Detection(card=Card.from_label("4D"), confidence=0.43,
+                            box=(1041, 999, 1134, 1080))])
+    assert r.cards == ["AS", "KH"]
+
+
+def test_carta_legitima_que_desliza_para_a_borda_mantem_a_vaga():
+    """Votar numa vaga existente continua valendo na borda.
+
+    Suprimir o voto mataria a vaga mais rápido — o problema OPOSTO, e que
+    aconteceu na mesma partida com o 3♦: a carta saiu do quadro, não da mão,
+    e o sistema emitiu um descarte que não houve.
+    """
+    r = FanReader(min_appear=3, window=20, expire=5, **QUADRO)
+    for _ in range(10):
+        r.update([d("AS", 500), d("KH", 700, y=900)])
+    assert r.cards == ["AS", "KH"]
+    # o K♥ DESLIZA até encostar na borda — passo curto, dentro do raio de
+    # casamento, que é como uma carta de verdade se move entre frames
+    for y in range(900, 1060, 20):
+        for _ in range(3):
+            r.update([d("AS", 500),
+                      Detection(card=Card.from_label("KH"), confidence=0.5,
+                                box=(700, y, 730, min(y + 30, 1080)))])
+    assert r.cards == ["AS", "KH"]
+
+
+def test_sem_quadro_configurado_a_borda_nao_faz_nada():
+    """Compatibilidade: `borda=0` (padrão) preserva o comportamento antigo."""
+    r = FanReader(min_appear=3, window=20)
+    for _ in range(30):
+        r.update([d("AS", 500),
+                  Detection(card=Card.from_label("4D"), confidence=0.43,
+                            box=(1041, 999, 1134, 1080))])
+    assert sorted(r.cards) == ["4D", "AS"]
+
+
+def test_carta_que_SALTA_para_a_borda_e_perdida_de_proposito():
+    """O custo assumido da regra da borda, registrado para não surpreender.
+
+    Se a carta aparecer na borda longe da vaga anterior (salto maior que
+    `match_dist`), ela não casa e também não pode nascer — some da mão. É o
+    preço de não deixar nascer carta em cima de índice amputado, e a medição
+    da partida de 2026-08-11 diz que o preço vale: 4 dos 5 fantasmas morreram
+    sem custar um único acerto.
+    """
+    r = FanReader(min_appear=3, window=20, expire=5, **QUADRO)
+    for _ in range(10):
+        r.update([d("AS", 500), d("KH", 700, y=100)])
+    assert r.cards == ["AS", "KH"]
+    for _ in range(10):
+        r.update([d("AS", 500),      # salto de ~950px direto para a borda
+                  Detection(card=Card.from_label("KH"), confidence=0.5,
+                            box=(700, 1050, 730, 1080))])
+    assert r.cards == ["AS"]

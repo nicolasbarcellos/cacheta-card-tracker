@@ -87,6 +87,16 @@ class Config:
     # Custo: uma troca de carta REAL demora ~22 frames (~1,5s) para aparecer,
     # porque a nova precisa empurrar a antiga para fora da janela de votos.
     fan_win_margin: float = 2.5
+    # Zona morta nas bordas do quadro: uma detecção que encosta nela não pode
+    # CRIAR vaga (votar numa vaga existente continua valendo). Carta que sai
+    # pelo enquadramento tem o índice cortado, e o modelo palpita sobre meio
+    # glifo. Medido na partida de 2026-08-11 — ver `FanReader._cortada`.
+    #
+    # 8 px é o MEIO de um platô medido contra a partida real: 2 a 14 px dão o
+    # resultado idêntico e melhor (4 dos 5 fantasmas somem, 100% de acerto em
+    # compras e descartes preservado); em 18 px começa a cortar carta legítima
+    # e um descarte sai errado. 0 desliga.
+    fan_borda: float = 8.0
     # Frames com a MESMA leitura antes de trocar a mão exibida. Com 12 (~0,8s)
     # uma leitura errada durante a organização das cartas na mão durava tempo
     # suficiente para entrar — o jogador ainda estava acomodando o leque, com

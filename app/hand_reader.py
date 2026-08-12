@@ -36,8 +36,19 @@ class FanReader:
                  min_appear: int = 6, expire: int = 20,
                  max_slots: int | None = None,
                  shift_tol: float = 20.0, max_shift: float = 200.0,
-                 win_margin: float = 1.6):
+                 win_margin: float = 1.6,
+                 frame_w: int = 0, frame_h: int = 0, borda: float = 0.0):
         self.match_dist = match_dist
+        # Zona morta nas bordas do quadro. Uma carta que desce abaixo do
+        # enquadramento tem o índice CORTADO, e o modelo palpita em cima de
+        # meio glifo. Medido na partida de 2026-08-11: o 4♦ fantasma, que
+        # gerou quatro eventos falsos, saía de caixas com `y2` exatamente
+        # 1080 (a borda) e confiança mediana 0,43, contra 0,93 das cartas de
+        # verdade. Só 2% das detecções da partida ficam coladas na borda, mas
+        # 34% das do fantasma ficavam.
+        self.frame_w = frame_w
+        self.frame_h = frame_h
+        self.borda = borda
         self.window = window
         self.min_appear = min_appear
         self.expire = expire
@@ -59,6 +70,21 @@ class FanReader:
         self._displayed: list[str] = []
         self._empty = 0                 # frames seguidos sem NENHUMA detecção
         self._occluded = 0              # frames seguidos de leque fechado
+
+    def _cortada(self, box) -> bool:
+        """A caixa encosta na borda do quadro, então o índice está amputado.
+
+        Vale só para NASCER vaga. Votar numa vaga existente continua
+        permitido: uma carta de verdade que desliza para a borda deve manter
+        a vaga viva — suprimir o voto dela a mataria mais rápido, que é o
+        problema oposto (e foi o do 3♦ na mesma partida).
+        """
+        if not (self.borda and self.frame_w and self.frame_h):
+            return False
+        x1, y1, x2, y2 = box
+        return (x1 <= self.borda or y1 <= self.borda
+                or x2 >= self.frame_w - self.borda
+                or y2 >= self.frame_h - self.borda)
 
     def _match(self, cx, cy):
         """Vaga mais próxima dentro do raio, e a distância até ela."""
@@ -221,6 +247,14 @@ class FanReader:
                     continue
                 slot = None       # outra detecção está mais perto desta vaga
             if slot is None:
+                # NA BORDA NÃO NASCE CARTA. Não casou com vaga nenhuma e o
+                # índice está cortado pelo quadro: é palpite sobre meio glifo,
+                # não uma carta a mais na mão. Deixar nascer dava vaga
+                # espúria, e vaga espúria na mão de 9 vira COMPRA — o teto de
+                # `hand_size + 1` não barra, porque a décima vaga é
+                # justamente a que o teto existe para permitir.
+                if self._cortada(d.box):
+                    continue
                 slot = {"x": cx, "y": cy, "votes": deque(maxlen=self.window),
                         "misses": 0, "label": None}
                 self._slots.append(slot)
