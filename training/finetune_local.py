@@ -1,12 +1,18 @@
 """Fine-tuning local: re-treina models/cards.pt com leques sintéticos + reais.
 
-Consome duas fontes e mistura as duas:
+Consome três fontes e mistura todas:
 
 - training/datasets/synthetic/ — gerado por generate_fans.py a partir dos
   moldes do seu baralho. Muitas imagens, variedade fácil, mas é simulação.
 - training/datasets/local/     — frames REAIS da sua câmera, capturados por
   capture_auto.py e pré-anotados por auto_annotate.py. Poucas imagens, porém
   é a distribuição que o modelo vai encontrar de verdade.
+- training/datasets/real/<partida>/ — frames REAIS de uma partida GRAVADA,
+  rotulados pelo gabarito revisado (`extrai_gravacao.py`). Custam zero tempo
+  de jogo, e é a única fonte que traz a condição em que o modelo erra ao vivo.
+
+Uma partida pode ser DEIXADA DE FORA com `--holdout <nome>`: sem isso, medir o
+modelo com `replay.py` contra a mesma partida que o treinou é medir decoreba.
 
 Do dataset real só entram os frames cuja imagem em local/review/ sobreviveu:
 apagar a foto de revisão é como você rejeita uma anotação errada.
@@ -17,6 +23,7 @@ o dado que importa.
 
 O modelo antigo fica salvo em models/cards_backup_N.pt.
 """
+import argparse
 import random
 import shutil
 import sys
@@ -28,6 +35,7 @@ from ultralytics import YOLO  # noqa: E402
 ROOT = Path(__file__).resolve().parent
 SYNTH = ROOT / "datasets" / "synthetic"
 LOCAL = ROOT / "datasets" / "local"
+GRAVADAS = ROOT / "datasets" / "real"
 TRAINSET = ROOT / "datasets" / "fans-split"
 MODEL = Path("models/cards.pt")
 
@@ -38,9 +46,15 @@ REAL_MAX_REPEAT = 6        # teto: repetir demais decora o pouco dado real
 # imgsz alto é necessário (o índice de canto é pequeno e o pip do naipe é o
 # primeiro detalhe a se perder), mas 1280 com batch 6 NÃO cabe em 4 GB de VRAM
 # — num RTX 3050 Laptop é preciso baixar o batch. Ex.: `... 12 1280 3`.
-EPOCHS = int(sys.argv[1]) if len(sys.argv) > 1 else 12
-IMGSZ = int(sys.argv[2]) if len(sys.argv) > 2 else 1280
-BATCH = int(sys.argv[3]) if len(sys.argv) > 3 else 6
+ap = argparse.ArgumentParser(description=__doc__,
+                             formatter_class=argparse.RawDescriptionHelpFormatter)
+ap.add_argument("epochs", nargs="?", type=int, default=12)
+ap.add_argument("imgsz", nargs="?", type=int, default=1280)
+ap.add_argument("batch", nargs="?", type=int, default=6)
+ap.add_argument("--holdout", action="append", default=[], metavar="PARTIDA",
+                help="partida de datasets/real/ a NÃO treinar (pode repetir)")
+args = ap.parse_args()
+EPOCHS, IMGSZ, BATCH = args.epochs, args.imgsz, args.batch
 
 
 def collect(source, needs_review=False):
@@ -73,6 +87,16 @@ def main():
     real = collect(LOCAL, needs_review=True)
     print(f"sintético: {len(synthetic)} imagens ({SYNTH})")
     print(f"real:      {len(real)} imagens revisadas ({LOCAL})")
+    # partidas gravadas: mesma regra de revisão (apagar a imagem de review/ é
+    # como se rejeita um rótulo), e o holdout fica de fora para sobrar partida
+    # com que MEDIR o modelo depois
+    for pasta in sorted(p for p in GRAVADAS.glob("*") if p.is_dir()):
+        if pasta.name in args.holdout:
+            print(f"partida:   {pasta.name} FORA do treino (holdout)")
+            continue
+        desta = collect(pasta, needs_review=True)
+        real += desta
+        print(f"partida:   {len(desta)} imagens revisadas ({pasta.name})")
     if len(synthetic) + len(real) < 200:
         sys.exit("dados insuficientes — rode generate_fans.py e/ou "
                  "capture_auto.py + auto_annotate.py")

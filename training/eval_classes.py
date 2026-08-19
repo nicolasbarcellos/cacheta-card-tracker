@@ -28,7 +28,12 @@ IMPORTANTE: compara modelos sempre no MESMO conjunto de validação. Trocar o
 dataset entre as medições invalida a comparação — o conjunto novo pode ser
 mais fácil ou mais difícil que o antigo.
 
-Uso: python training/eval_classes.py <modelo.pt> [n_imagens]
+E prefira medir num conjunto REAL: rodando só em sintético, este script já
+aprovou (K = 100%) um modelo que errava justamente o K♠ na mesa. Passe uma
+partida extraída por `extrai_gravacao.py` que NÃO tenha entrado no treino.
+
+Uso: python training/eval_classes.py <modelo.pt> [n_imagens] [dataset]
+     python training/eval_classes.py models/cards.pt 400 training/datasets/real/20260811-211614
 """
 import sys
 from collections import Counter, defaultdict
@@ -42,6 +47,13 @@ sys.path.insert(0, str(ROOT / "training"))
 
 MODEL_PATH = sys.argv[1] if len(sys.argv) > 1 else str(ROOT / "models" / "cards.pt")
 N_IMAGES = int(sys.argv[2]) if len(sys.argv) > 2 else 150
+# Terceiro argumento: um dataset REAL (ex.: training/datasets/real/<partida>,
+# produzido por extrai_gravacao.py). Sem ele, mede no sintético — e aí a
+# medição herda o defeito que o projeto já documentou: em 2026-08-12 este
+# script deu K=100% no MESMO dia em que o K♠ era lido como A♠ na mesa, porque
+# o sintético não gera aquela condição. Um dataset real de uma partida que o
+# modelo NÃO treinou é o único conjunto que mede o que importa.
+DATASET = Path(sys.argv[3]) if len(sys.argv) > 3 else None
 sys.argv = [sys.argv[0]]
 
 from finetune_local import SYNTH, collect, split_pairs  # noqa: E402
@@ -71,13 +83,22 @@ def tipo_erro(verdade, predito):
 model = YOLO(MODEL_PATH)
 names = model.names
 
-pares = collect(SYNTH)
-if not pares:
-    sys.exit(f"nenhuma imagem em {SYNTH} — rode generate_fans.py")
-_treino, val = split_pairs(pares, seed=42)
-val = val[:N_IMAGES]
+if DATASET is not None:
+    # dataset real: TODAS as imagens revisadas são validação — ele não treinou
+    # este conjunto (é o holdout), então não há o que separar
+    val = collect(DATASET, needs_review=True)[:N_IMAGES]
+    if not val:
+        sys.exit(f"nenhuma imagem revisada em {DATASET}")
+    fonte = f"{DATASET.name} (REAL)"
+else:
+    pares = collect(SYNTH)
+    if not pares:
+        sys.exit(f"nenhuma imagem em {SYNTH} — rode generate_fans.py")
+    _treino, val = split_pairs(pares, seed=42)
+    val = val[:N_IMAGES]
+    fonte = f"sintético (de {len(pares)} geradas)"
 print(f"modelo: {MODEL_PATH}")
-print(f"validacao: {len(val)} imagens (de {len(pares)} geradas)\n", flush=True)
+print(f"validacao: {len(val)} imagens — {fonte}\n", flush=True)
 
 # abertura do leque por imagem: num leque FECHADO os índices ficam quase na
 # mesma altura; num ABERTO descrevem um arco. A dispersão vertical é o proxy.

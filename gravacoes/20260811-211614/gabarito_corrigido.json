@@ -1,0 +1,152 @@
+{
+  "revisados": 28,
+  "total_eventos": 28,
+  "jogadas": [
+    {
+      "tipo": "draw",
+      "carta": "10S",
+      "ts": 186.407,
+      "i": 130236
+    },
+    {
+      "tipo": "discard",
+      "carta": "QC",
+      "ts": 191.724,
+      "i": 130430
+    },
+    {
+      "tipo": "draw",
+      "carta": "3D",
+      "ts": 217.226,
+      "i": 131205
+    },
+    {
+      "tipo": "discard",
+      "carta": "10S",
+      "ts": 223.268,
+      "i": 131375
+    },
+    {
+      "tipo": "draw",
+      "carta": "KD",
+      "ts": 243.237,
+      "i": 131943
+    },
+    {
+      "tipo": "discard",
+      "carta": "3D",
+      "ts": 257.208,
+      "i": 132368,
+      "derivado": true
+    },
+    {
+      "tipo": "draw",
+      "carta": "QD",
+      "ts": 271.226,
+      "i": 132794
+    },
+    {
+      "tipo": "discard",
+      "carta": "KD",
+      "ts": 310.706,
+      "i": 134059
+    },
+    {
+      "tipo": "draw",
+      "carta": "AD",
+      "ts": 362.532,
+      "i": 135683
+    },
+    {
+      "tipo": "discard",
+      "carta": "6H",
+      "ts": 382.002,
+      "i": 136401
+    },
+    {
+      "tipo": "draw",
+      "carta": "2H",
+      "ts": 392.786,
+      "i": 136811
+    },
+    {
+      "tipo": "discard",
+      "carta": "QD",
+      "ts": 400.21,
+      "i": 137069
+    },
+    {
+      "tipo": "draw",
+      "carta": "2S",
+      "ts": 405.059,
+      "i": 137232
+    },
+    {
+      "tipo": "discard",
+      "carta": "2S",
+      "ts": 413.493,
+      "i": 137502
+    },
+    {
+      "tipo": "draw",
+      "carta": "3H",
+      "ts": 424.513,
+      "i": 137838
+    },
+    {
+      "tipo": "discard",
+      "carta": "5S",
+      "ts": 431.581,
+      "i": 138048
+    },
+    {
+      "tipo": "draw",
+      "carta": "7S",
+      "ts": 443.016,
+      "i": 138395
+    },
+    {
+      "tipo": "discard",
+      "carta": "KC",
+      "ts": 450.855,
+      "i": 138631
+    },
+    {
+      "tipo": "draw",
+      "carta": "8S",
+      "ts": 461.941,
+      "i": 138984
+    },
+    {
+      "tipo": "discard",
+      "carta": "8S",
+      "ts": 494.897,
+      "i": 139987
+    },
+    {
+      "tipo": "draw",
+      "carta": "8C",
+      "ts": 506.603,
+      "i": 140317
+    },
+    {
+      "tipo": "discard",
+      "carta": "2H",
+      "ts": 519.719,
+      "i": 140692
+    },
+    {
+      "tipo": "draw",
+      "carta": "10H",
+      "ts": 528.164,
+      "i": 140932
+    },
+    {
+      "tipo": "discard",
+      "carta": "8C",
+      "ts": 534.168,
+      "i": 141106
+    }
+  ],
+  "nota": "descartes com 'derivado': true foram inferidos da mao exibida, nao revistos no video"
+}

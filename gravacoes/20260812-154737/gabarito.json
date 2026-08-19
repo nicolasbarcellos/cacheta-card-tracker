@@ -1,0 +1,198 @@
+{
+  "revisados": 39,
+  "total_eventos": 39,
+  "jogadas": [
+    {
+      "tipo": "draw",
+      "carta": "3C",
+      "ts": 47.277,
+      "i": 1899
+    },
+    {
+      "tipo": "discard",
+      "carta": "6S",
+      "ts": 53.674,
+      "i": 2146
+    },
+    {
+      "tipo": "draw",
+      "carta": "7S",
+      "ts": 65.103,
+      "i": 2598
+    },
+    {
+      "tipo": "discard",
+      "carta": "3C",
+      "ts": 105.634,
+      "i": 4143
+    },
+    {
+      "tipo": "draw",
+      "carta": "3H",
+      "ts": 111.034,
+      "i": 4344
+    },
+    {
+      "tipo": "discard",
+      "carta": "3H",
+      "ts": 119.245,
+      "i": 4651
+    },
+    {
+      "tipo": "draw",
+      "carta": "QS",
+      "ts": 132.013,
+      "i": 5146
+    },
+    {
+      "tipo": "draw",
+      "carta": "JS",
+      "ts": 165.769,
+      "i": 6434
+    },
+    {
+      "tipo": "draw",
+      "carta": "2D",
+      "ts": 197.129,
+      "i": 7628
+    },
+    {
+      "tipo": "discard",
+      "carta": "7S",
+      "ts": 222.601,
+      "i": 8650
+    },
+    {
+      "tipo": "draw",
+      "carta": "4S",
+      "ts": 230.919,
+      "i": 8987
+    },
+    {
+      "tipo": "discard",
+      "carta": "4S",
+      "ts": 234.844,
+      "i": 9149
+    },
+    {
+      "tipo": "draw",
+      "carta": "8C",
+      "ts": 239.54,
+      "i": 9344
+    },
+    {
+      "tipo": "discard",
+      "carta": "QS",
+      "ts": 245.396,
+      "i": 9566
+    },
+    {
+      "tipo": "draw",
+      "carta": "9H",
+      "ts": 249.11,
+      "i": 9707
+    },
+    {
+      "tipo": "discard",
+      "carta": "8C",
+      "ts": 254.182,
+      "i": 9901
+    },
+    {
+      "tipo": "draw",
+      "carta": "10D",
+      "ts": 264.782,
+      "i": 10311
+    },
+    {
+      "tipo": "discard",
+      "carta": "KS",
+      "ts": 267.963,
+      "i": 10434
+    },
+    {
+      "tipo": "draw",
+      "carta": "2H",
+      "ts": 270.285,
+      "i": 10523
+    },
+    {
+      "tipo": "draw",
+      "carta": "6H",
+      "ts": 280.994,
+      "i": 10932
+    },
+    {
+      "tipo": "discard",
+      "carta": "2H",
+      "ts": 286.557,
+      "i": 11175
+    },
+    {
+      "tipo": "draw",
+      "carta": "QH",
+      "ts": 293.584,
+      "i": 11489
+    },
+    {
+      "tipo": "discard",
+      "carta": "6H",
+      "ts": 296.594,
+      "i": 11625
+    },
+    {
+      "tipo": "draw",
+      "carta": "8S",
+      "ts": 305.625,
+      "i": 12024
+    },
+    {
+      "tipo": "draw",
+      "carta": "KD",
+      "ts": 316.701,
+      "i": 12534
+    },
+    {
+      "tipo": "discard",
+      "carta": "9H",
+      "ts": 320.187,
+      "i": 12683
+    },
+    {
+      "tipo": "draw",
+      "carta": "4H",
+      "ts": 325.014,
+      "i": 12870
+    },
+    {
+      "tipo": "draw",
+      "carta": "8D",
+      "ts": 359.874,
+      "i": 14226
+    },
+    {
+      "tipo": "discard",
+      "carta": "KD",
+      "ts": 367.786,
+      "i": 14536
+    },
+    {
+      "tipo": "draw",
+      "carta": "3S",
+      "ts": 371.158,
+      "i": 14663
+    },
+    {
+      "tipo": "draw",
+      "carta": "7D",
+      "ts": 420.242,
+      "i": 16619
+    },
+    {
+      "tipo": "draw",
+      "carta": "7H",
+      "ts": 430.52,
+      "i": 17033
+    }
+  ]
+}

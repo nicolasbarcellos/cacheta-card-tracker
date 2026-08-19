@@ -32,7 +32,28 @@ setup real.
 | `generate_fans.py` | `training/datasets/synthetic/{images,labels}/` |
 | `capture_auto.py` | `training/datasets/meu-setup/*.jpg` |
 | `auto_annotate.py` | `training/datasets/local/{images,labels,review}/` |
+| `extrai_gravacao.py` | `training/datasets/real/<partida>/{images,labels,review}/` |
 | `finetune_local.py` | `models/cards.pt` (backup do antigo em `cards_backup_N.pt`) |
+
+## Dado real de graça: a partida já gravada
+
+Se existe gravação em `gravacoes/` com gabarito revisado, ela vale mais que uma
+captura nova — e não custa nenhum minuto seu segurando o baralho:
+
+```powershell
+python training/extrai_gravacao.py gravacoes/20260812-154737 --so-analise   # confere sem salvar
+python training/extrai_gravacao.py gravacoes/20260812-154737                # extrai
+python training/finetune_local.py 12 1280 3 --holdout 20260811-211614       # treina deixando uma fora
+```
+
+O rótulo sai do **gabarito**, não do palpite do modelo, então o dado é correto
+exatamente onde ele erra. Antes de treinar, **olhe as imagens de `review/` dos
+frames listados em `correcoes.json`** — são as amostras que ensinam algo novo e
+também onde um erro de reconstrução apareceria. Apagar a imagem de `review/`
+rejeita o frame, igual ao fluxo local.
+
+Guarde SEMPRE uma partida no `--holdout`: medir o modelo novo com
+`replay.py --redetectar` contra a partida que o treinou mede decoreba.
 
 O `finetune_local.py` mistura as duas fontes e **repete os frames reais** até
 eles ocuparem ~30% do treino — sem isso os poucos frames reais se diluem entre
