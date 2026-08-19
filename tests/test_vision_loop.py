@@ -23,7 +23,7 @@ def make_hand_view():
 
 
 def make_lock():
-    return StableHand(hand_size=9, lock_frames=4)
+    return StableHand(lock_frames=4)
 
 
 def feed(n, cards, tracker, hv, lock):

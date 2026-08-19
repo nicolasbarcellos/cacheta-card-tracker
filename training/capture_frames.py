@@ -1,8 +1,8 @@
-"""Captura frames das 2 webcams para montar o dataset de fine-tuning.
+"""Captura frames da webcam da mão para montar o dataset de fine-tuning.
 
-Espaço = salva frame das duas câmeras; q = sair.
-Capturar ~100-200 frames variados por câmera: cartas diferentes, leque
-aberto/fechado, mão em ângulos diferentes, com e sem oclusão parcial.
+Espaço = salva frame; q = sair.
+Capturar ~100-200 frames variados: cartas diferentes, leque aberto/fechado,
+mão em ângulos diferentes, com e sem oclusão parcial.
 """
 import sys
 import time
@@ -18,8 +18,6 @@ OUT = Path(__file__).resolve().parent / "datasets" / "meu-setup"
 OUT.mkdir(parents=True, exist_ok=True)
 
 cams = {
-    "discard": CameraStream(config.discard_cam_index,
-                            config.frame_width, config.frame_height),
     "hand": CameraStream(config.hand_cam_index,
                          config.frame_width, config.frame_height),
 }

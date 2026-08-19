@@ -75,18 +75,31 @@ def process_frame(detections_hand, tracker, hand_view, hand_lock,
     é o pipeline de verdade, e não uma reimplementação que pode divergir.
     """
     hand_view.update(hand_instances(detections_hand))
-    if hand_lock.update(hand_view.cards):
-        cards = [Card.from_label(c) for c in hand_lock.cards]
-        antes = len(tracker.events)
-        tracker.set_hand_display(cards)
+    trocou = hand_lock.update(hand_view.cards)
+    exibida = hand_lock.cards
+    cards = [Card.from_label(c) for c in exibida]
+
+    # A EXIBIÇÃO é atualizada todo frame, o EVENTO só quando a mão troca de
+    # conjunto. Os dois têm requisitos opostos: a ordem do leque precisa
+    # acompanhar o que se vê agora (o jogador encaixa a carta comprada no meio,
+    # e a tela tem de mostrar ali), enquanto o evento precisa da estabilidade
+    # do conjunto para não disparar em leitura tremida. `set_hand_display` não
+    # faz nada quando a lista é igual à anterior, então isto é barato.
+    antes_eventos = len(tracker.events)
+    antes_exibida = list(tracker.hand_view)
+    tracker.set_hand_display(cards)
+    if trocou:
         tracker.on_hand_changed(cards)
         if verbose:
             log_lock(hand_view, hand_lock)
-        if recorder is not None:
-            recorder.mao(i, hand_lock.cards)
-            for ev in tracker.events[antes:]:
-                recorder.evento(i, {"ev_id": ev.id, "tipo": ev.type,
-                                    "carta": ev.card.code, "fonte": ev.source})
+    if recorder is not None:
+        # grava toda mudança do que está NA TELA, inclusive a de ordem: é o
+        # que o `revisar_partida.py` mostra, e o replay reproduz
+        if [c.code for c in tracker.hand_view] != [c.code for c in antes_exibida]:
+            recorder.mao(i, list(exibida))
+        for ev in tracker.events[antes_eventos:]:
+            recorder.evento(i, {"ev_id": ev.id, "tipo": ev.type,
+                                "carta": ev.card.code, "fonte": ev.source})
 
 
 def vision_loop(cams, detector, tracker, annotated, running,
@@ -105,20 +118,6 @@ def vision_loop(cams, detector, tracker, annotated, running,
             continue
         dets_hand = detector.detect(frame)
         annotated["hand"] = draw_boxes(frame, dets_hand)
-
-        # A câmera do monte é SÓ preview do painel: não gera evento nenhum
-        # (se gerasse, o descarte sairia duplicado). Rodar o modelo nela era
-        # metade do custo de inferência gasto em nada — e como os parâmetros
-        # do pipeline são contados em frames, isso dobrava a duração REAL de
-        # cada janela de votação. Ligue `detect_discard_cam` se quiser as
-        # caixas no preview de volta para diagnosticar aquela câmera.
-        frame_discard = cams["discard"].read()
-        if frame_discard is not None:
-            if config.detect_discard_cam:
-                dets = detector.detect(frame_discard)
-                annotated["discard"] = draw_boxes(frame_discard, dets)
-            else:
-                annotated["discard"] = frame_discard
 
         # o índice vem ANTES do processamento: é ele que amarra a mão e os
         # eventos ao frame exato que os gerou
@@ -139,17 +138,20 @@ def build_pipeline():
                           window=config.fan_window,
                           min_appear=config.fan_min_appear,
                           expire=config.fan_expire,
-                          # +1: a mão passa por 10 cartas no instante da
-                          # compra e o jogador espera ver as 10. O teto ainda
-                          # existe para matar vaga espúria — só subiu um.
-                          max_slots=config.hand_size + 1,
+                          # SEM teto de vagas desde 2026-08-19: o leitor não
+                          # sabe quantas cartas a mão tem — o mesmo modelo vai
+                          # servir a pôquer (2), truco (3), pif-paf e cacheta
+                          # (9). O teto matava vaga espúria de graça, e o que
+                          # sobrou no lugar dele são as guardas que não
+                          # dependem do jogo: `min_appear`, `fan_expire`,
+                          # `fan_borda` e o piso de peso da carta duplicada.
+                          max_slots=None,
                           win_margin=config.fan_win_margin,
                           frame_w=config.frame_width,
                           frame_h=config.frame_height,
                           borda=config.fan_borda,
                           peso_min=config.fan_peso_min)
-    hand_lock = StableHand(hand_size=config.hand_size,
-                           lock_frames=config.lock_frames)
+    hand_lock = StableHand(lock_frames=config.lock_frames)
     return hand_view, hand_lock
 
 
@@ -167,9 +169,11 @@ def main():
     tracker = GameTracker(hand_size=config.hand_size)
     hand_view, hand_lock = build_pipeline()
     annotated: dict = {}
+    # UMA câmera só. A do monte de descarte saiu em 2026-08-19: o projeto
+    # passou a ser LER A MÃO, e compra/descarte viraram responsabilidade de
+    # outros modelos, com outras câmeras. Ela já não gerava evento desde
+    # f5fdf64 — era só preview, e ainda assim consumia USB e uma thread.
     cams = {
-        "discard": CameraStream(config.discard_cam_index,
-                                config.frame_width, config.frame_height),
         "hand": CameraStream(config.hand_cam_index,
                              config.frame_width, config.frame_height),
     }

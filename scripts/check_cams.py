@@ -1,4 +1,8 @@
-"""Mostra as duas webcams lado a lado para conferir índices/foco/enquadramento."""
+"""Mostra cada índice de câmera, para achar QUAL deles é a webcam da mão.
+
+O Windows renumera os índices ao reconectar o USB, e o sintoma é o preview
+da mão mostrando outra coisa. Aqui aparecem todos os índices que abrirem.
+"""
 import sys
 from pathlib import Path
 
@@ -8,13 +12,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from app.capture import CameraStream  # noqa: E402
 from app.config import config  # noqa: E402
 
-cams = {
-    "descarte": CameraStream(config.discard_cam_index,
-                             config.frame_width, config.frame_height),
-    "mao": CameraStream(config.hand_cam_index,
-                        config.frame_width, config.frame_height),
-}
-print("q para sair. Se as câmeras estiverem trocadas, ajustar índices em app/config.py")
+cams = {f"indice {i}": CameraStream(i, config.frame_width, config.frame_height)
+        for i in range(3)}
+print(f"q para sair. hand_cam_index atual = {config.hand_cam_index} "
+      f"(ajustar em app/config.py se não for a da mão)")
 while True:
     for name, cam in cams.items():
         frame = cam.read()

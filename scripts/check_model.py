@@ -1,4 +1,4 @@
-"""Mostra a câmera do descarte com as detecções do modelo treinado."""
+"""Mostra a câmera da mão com as detecções do modelo treinado."""
 import sys
 from pathlib import Path
 
@@ -10,7 +10,7 @@ from app.config import config  # noqa: E402
 from app.detector import CardDetector, draw_boxes  # noqa: E402
 
 detector = CardDetector(config.model_path, min_confidence=0.5)
-cam = CameraStream(config.discard_cam_index,
+cam = CameraStream(config.hand_cam_index,
                    config.frame_width, config.frame_height)
 print("mostre uma carta para a câmera; q para sair")
 while True:

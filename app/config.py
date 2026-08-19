@@ -3,15 +3,15 @@ from dataclasses import dataclass
 
 @dataclass
 class Config:
-    # 2 webcams disponíveis. A da MÃO (a que importa) é a USB externa; a interna
-    # do notebook sobra para o monte de descarte.
+    # UMA câmera: a webcam USB apontada para a mão. A interna do notebook,
+    # que servia de preview do monte, saiu em 2026-08-19 — compra e descarte
+    # deixaram de ser objetivo deste modelo e vão para outras câmeras.
     #
     # ATENÇÃO: o índice NÃO é fixo. O Windows renumera as câmeras ao
     # desconectar/reconectar o USB ou reiniciar — em 2026-08-04 a externa era a 1
     # e virou a 0, e o app passou a mostrar o rosto do jogador como "mão".
-    # Sintoma: o preview "Câmera da mão" do painel mostra a câmera errada. Basta
-    # trocar os dois números aqui (ou rodar scripts/check_cams.py para conferir).
-    discard_cam_index: int = 1
+    # Sintoma: o preview "Câmera da mão" do painel mostra a câmera errada.
+    # `scripts/check_cams.py` mostra o que cada índice está vendo.
     hand_cam_index: int = 0
     frame_width: int = 1920
     frame_height: int = 1080
@@ -30,13 +30,6 @@ class Config:
     # desligado, o rótulo certo vence o voto ponderado em 8 das 9 vagas
     # (o 4♥ sai em 695 frames com confiança média 0.74).
     agnostic_nms: bool = False
-    # A câmera do monte é só preview do painel — não gera evento nenhum desde
-    # que compra e descarte passaram a sair da MUDANÇA do leque (f5fdf64).
-    # Rodar o modelo nela era metade da inferência gasta em nada, e como os
-    # parâmetros do pipeline são contados em FRAMES, cada janela de votação
-    # durava o dobro do tempo em segundos. Ligar só para diagnosticar aquela
-    # câmera (traz as caixas verdes de volta ao preview, ao custo do FPS).
-    detect_discard_cam: bool = False
     stable_frames: int = 10
     hand_absent_frames: int = 45  # ~3s sem ver a carta (com outras visíveis) = sai da mão
     # leitor do leque (votação temporal por posição)
@@ -130,7 +123,23 @@ class Config:
     # 60 desde 2026-08-11: os 30 valiam ~1,4s a 22 fps e passaram a valer 0,7s
     # depois que o FPS dobrou — perto dos 0,55s que já tinham sido rejeitados.
     # Ver o bloco sobre FPS logo acima.
-    lock_frames: int = 60
+    #
+    # 20 desde 2026-08-19, quando o objetivo passou a ser LER A MÃO e não mais
+    # emitir compra/descarte. A espera longa existia para proteger o EVENTO:
+    # um evento disparado em leitura tremida vira erro permanente no histórico,
+    # enquanto uma mão exibida errada se corrige sozinha no frame seguinte.
+    # Varrido contra a partida de 19/08 (5 min, 27 fps):
+    #
+    #   frames   atraso    carta vista fora da tela   trocas de mão
+    #      60     2,54s              13,5%                 17
+    #      45     1,93s               9,9%                 18
+    #      30     1,28s               8,4%                 18
+    #      20     0,86s               7,5%                 18   <-
+    #      10     0,43s               8,0%                 24
+    #
+    # Ou seja: esperar mais não estava comprando acerto nenhum, só atraso —
+    # e abaixo de 20 a tela começa a tremer (24 trocas para ~12 jogadas).
+    lock_frames: int = 20
     hand_size: int = 9
     server_host: str = "127.0.0.1"
     server_port: int = 8000

@@ -4,6 +4,42 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Código, comentários, docstrings e mensagens de commit deste repositório são em **português**. Mantenha o padrão (Conventional Commits com corpo explicando o *porquê* e o que foi medido).
 
+## O objetivo mudou em 2026-08-19 — leia isto antes de qualquer coisa
+
+Este projeto agora tem **uma responsabilidade só: LER AS CARTAS DA MÃO**, com o menor erro possível
+e o menor atraso possível. Decisão do cliente: o produto vai ter vários modelos, cada câmera lendo
+uma coisa, e **compra e descarte serão de OUTROS modelos**, com outras câmeras.
+
+Três consequências que invalidam parte grande do que está escrito abaixo:
+
+1. **Nada de assumir o jogo.** O mesmo leitor vai servir a pôquer (2 cartas), truco (3), pif-paf e
+   cacheta (9). Sumiram o teto de vagas do `FanReader` (`max_slots`) e o filtro de tamanho
+   plausível do `StableHand` — os dois só funcionavam sabendo que a mão tinha 9.
+2. **Uma câmera só**, a webcam da mão. A câmera do monte de descarte saiu do app, do painel e da
+   config.
+3. **A métrica mudou.** Não é mais "acertou a compra": é **a mão na tela ser a mão real, agora**.
+   Três números, todos medidos por replay contra uma partida gravada:
+   - *atraso* — segundos entre a leitura viva mudar e a tela mudar;
+   - *contradição* — % de frames em que uma carta lida com confiança ≥ 0,80 não está na tela;
+   - *trocas* — quantas vezes a mão exibida mudou (acima do número de jogadas = tremor).
+
+Medido na partida de 19/08 (5 min, 27 fps), antes e depois desta virada:
+
+| | antes | agora |
+|---|---|---|
+| atraso até a tela | 2,57 s | **0,86 s** |
+| ordem errada | 16,9% | **1,9%** |
+| carta vista fora da tela | 13,3% | **7,5%** |
+
+O que veio de graça: **o atraso era quase todo seguro para o EVENTO**. Um evento errado fica no
+histórico para sempre, uma mão exibida errada se corrige no frame seguinte — por isso o
+`lock_frames` podia cair de 60 para 20 sem custar acerto (a varredura está no `config.py`).
+
+**O código de compra/descarte continua no repositório** (`tracker.on_hand_changed`, `app/scoring.py`,
+`scripts/revisar_partida.py`, o gabarito das gravações). Não foi apagado de propósito: é história
+medida e pode servir aos outros modelos. Só não é mais o alvo — as seções sobre nota de compra e
+descarte, meta de aceite e gabarito ficam como REGISTRO, não como objetivo.
+
 ## Comandos
 
 ```powershell
@@ -14,12 +50,12 @@ pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
 pip install -r requirements.txt
 python scripts/download_assets.py     # PNGs das 52 cartas em assets/cards/ (git-ignored)
 
-python -m app.main                    # app real (precisa das 2 webcams livres)
+python -m app.main                    # app real (precisa da webcam da mão livre)
 python -m app.main --gravar           # idem, gravando a partida para medir depois
 python scripts/demo_server.py         # partida simulada, sem webcam — para mexer no overlay/painel
 
 python -m pytest                      # suíte completa (rápida: só código puro)
-python -m pytest tests/test_hand_reader.py::test_max_slots_caps_the_hand   # um teste
+python -m pytest tests/test_hand_reader.py::test_carta_duplicada_e_FRACA_nao_entra_na_mao
 ```
 
 Diagnóstico de câmera/modelo (todos abrem janela do OpenCV, `q` encerra):
@@ -55,22 +91,17 @@ estado no WebSocket (`app/server.py:52`). Os frames anotados vão para o dict `a
 pelo MJPEG em `/stream/{cam}` (encode em `asyncio.to_thread`, cache de 120 ms).
 
 ```
-CameraStream(hand)    → detect → hand_instances → FanReader → StableHand ─┬→ tracker.set_hand_display  (overlay da mão)
-                                                                          └→ tracker.on_hand_changed  (eventos draw/discard)
-CameraStream(discard) → detect → draw_boxes → annotated["discard"]        (só preview do painel)
+CameraStream(hand) → detect → hand_instances → FanReader → StableHand ─┬→ tracker.set_hand_display  (a MÃO na tela: o produto)
+                                                                       └→ tracker.on_hand_changed  (eventos draw/discard: fora de escopo)
 ```
 
-**UMA câmera gera tudo** (`app/main.py:process_frame`) — desde `f5fdf64`. Compra e descarte saem
-os dois da MUDANÇA do leque: cresceu uma carta = compra (a que entrou), encolheu uma = descarte
-(a que saiu). Não é preciso ver o monte, que é o que exigia a segunda câmera.
+**UMA câmera, e agora é a única** (`app/main.py:process_frame`). A do monte saiu em 2026-08-19; já
+não gerava evento desde `f5fdf64`, quando compra e descarte passaram a sair da MUDANÇA do leque.
 
-A câmera do descarte continua sendo lida e anotada para o preview do painel, **mas não gera evento
-nenhum**. Se gerasse, o descarte sairia duplicado (uma vez pela mão, outra pelo monte).
-
-O caminho é único e sequencial, não são dois pipelines paralelos: a mesma leitura estável
-(`StableHand`) alimenta a exibição e os eventos. Estabilidade e reação deixaram de ter requisitos
-opostos porque o evento agora depende da mesma mão que é exibida — o preço é a latência do
-`lock_frames` (~2 s) valer também para o evento.
+A EXIBIÇÃO é atualizada a cada frame e o EVENTO só quando o conjunto muda. Os dois têm requisitos
+opostos e é por isso que estão separados: a ordem do leque precisa acompanhar o que se vê AGORA (o
+jogador encaixa a carta comprada no meio, e a tela tem de mostrar ali), enquanto o evento precisa
+de estabilidade para não disparar em leitura tremida.
 
 `tracker.on_hand_changed` só reage a mudança de **exatamente uma** carta. Salto maior é leitura
 instável, e a mão indo a zero (jogador abaixou as cartas) não pode virar nove descartes.
@@ -84,9 +115,14 @@ instável, e a mão indo a zero (jogador abaixou as cartas) não pode virar nove
 2. `FanReader` (`app/hand_reader.py`) — votação temporal por "vaga" (posição estável na imagem).
    O voto é **ponderado pela confiança**, não por contagem: medido no setup real, quando o modelo
    troca o naipe dentro da mesma cor (♠↔♣, ♥↔♦) erra com ~0.34 e acerta com ~0.85, então por
-   maioria simples o errado venceria. Teto de vagas = `hand_size + 1`: vaga sobrando é espúria, e o
-   corte ordena por `misses` antes de peso (depois de o leque se mover, a vaga velha ainda é
-   "forte" mas está ausente — quem tem de ganhar é a nova).
+   maioria simples o errado venceria.
+
+   **O teto de vagas (`max_slots = hand_size + 1`) foi DESLIGADO em 2026-08-19**, junto com a
+   virada para ler qualquer jogo: ele só sabia matar vaga espúria porque sabia que a mão tinha 9.
+   Quem ficou no lugar dele são as guardas que não dependem do jogo — `min_appear`, `fan_expire`,
+   `fan_borda` e, principalmente, o **piso de peso da carta duplicada** (`fan_peso_min`), que
+   passou a ser a proteção central: medido, desligá-lo leva a contradição de 7,5% para **32,7%**.
+   O corte por `misses` antes de peso continua no `_corta`, e vale se o teto voltar.
 
    Duas proteções que vieram depois e não são óbvias:
 
@@ -129,29 +165,33 @@ instável, e a mão indo a zero (jogador abaixou as cartas) não pode virar nove
    um conjunto que fique estável por `lock_frames` substitui o exibido, automaticamente.
    `force_relock()` (botão "Reler mão") virou só um reset manual.
 
-   Só aceita **mão plausível**: `0` (jogador abaixou as cartas), `hand_size` ou `hand_size + 1`
-   (instante da compra). Qualquer outro tamanho é bagunça de transição — no ato físico de pôr ou
-   tirar uma carta a mão passa na frente, cartas ficam ocultas e os frames borram, e a leitura
-   desce a 6, 7, 8 por um segundo. Sem esse filtro a tela mostrava essa bagunça, que era a
-   sensação de "ele fica trocando as cartas sozinho". Custo: se a leitura estabilizar num tamanho
-   inesperado, a tela segura a mão anterior em vez de mostrar uma mão incompleta.
+   **Aceita QUALQUER tamanho desde 2026-08-19.** Antes só passavam `0`, `hand_size` e
+   `hand_size + 1`, para não exibir a bagunça da transição (no ato de pôr ou tirar uma carta a mão
+   passa na frente e a leitura desce a 6, 7, 8 por um segundo). Isso caiu junto com a premissa de
+   que o jogo é cacheta. Quem faz esse trabalho agora é só a ESTABILIDADE: a bagunça muda de
+   tamanho a cada frame e não sobrevive a `lock_frames`. Custo assumido: uma leitura incompleta
+   **mas estável** passa a ser exibida — inevitável, porque "incompleta" só existe quando se sabe
+   o tamanho certo.
 
    A ESTABILIDADE olha o conjunto, não a ordem (duas cartas trocando de lugar por um tremor não é
-   mão nova); a ORDEM, essa, é preservada na exibição — é a ordem física do leque, da esquerda
-   para a direita.
+   mão nova). A ORDEM é tratada à parte, e desde 2026-08-19 ela **acompanha a leitura viva a cada
+   frame**, não fica congelada no instante da trava: a carta ausente naquele frame não tinha
+   posição conhecida e ia para o FIM da lista, onde ficava mesmo depois de reaparecer no lugar
+   certo. Era o que o jogador via ao encaixar a carta comprada no meio do leque — medido, **16,9%
+   dos frames com a mão certa tinham a ordem errada; caiu para 1,9%**. A ordem só é atualizada
+   quando a leitura viva bate em CONJUNTO com a exibida, senão o overlay remexeria as cartas a
+   cada frame borrado.
 
-   `lock_frames = 30` (~2 s), era 12. Com 12 (~0,8 s) uma leitura errada durante a organização das
-   cartas durava tempo suficiente para entrar — o jogador ainda estava acomodando o leque, com os
-   dedos por cima do índice, e o sistema já aceitava. Os 2 s usam a estabilidade como sinal de
-   "terminei de organizar": não dá para exigir 9 ou 10 cartas, porque nem sempre o leque está todo
-   aberto, mas enquanto a mão se mexe a leitura muda o tempo todo e não estabiliza. Custo: compra e
-   descarte demoram ~1,2 s a mais para aparecer.
+   `lock_frames = 20` (~0,7 s). Foi 12, depois 30, depois 60 — todos escolhidos para proteger o
+   EVENTO de compra/descarte. Com o evento fora de escopo, a varredura mostrou que a espera não
+   comprava acerto nenhum: de 60 para 20 o atraso caiu de 2,57 s para 0,86 s e a contradição caiu
+   de 13,5% para 7,5%. Abaixo de 20 a tela começa a tremer. Tabela completa no `config.py`.
 
    Até 2026-07-30 ele **travava** a primeira mão de exatamente 9 e segurava até o botão, para o
    overlay nunca oscilar numa live. Trocado a pedido do usuário: o custo era clicar a cada carta
    comprada e conviver com mão exibida velha. A estabilidade agora vem só da histerese — se a
    exibição ficar inquieta demais numa gravação, o ajuste é aumentar `lock_frames`, não voltar
-   ao botão. O teto de vagas do `FanReader` acompanhou: `hand_size + 1`.
+   ao botão.
 
 Invariante em todas as camadas: **frame sem nenhuma detecção significa "mão fora do quadro" e
 congela o estado**, não zera. Só ausência *relativa* (outras cartas visíveis, esta não) expira.

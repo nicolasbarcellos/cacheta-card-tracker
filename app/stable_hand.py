@@ -11,9 +11,17 @@ class StableHand:
     ESTÁVEL por `lock_frames` frames e é diferente do que está exibido, a
     exibição é atualizada — automaticamente, sem botão.
 
-    O `hand_size` NÃO é exigido: a mão tem 9 cartas na maior parte do tempo
-    mas passa por 10 no instante da compra, e o jogador espera ver as 10.
-    Ele serve só para dimensionar o teto de vagas do FanReader lá fora.
+    NÃO sabe quantas cartas a mão tem, e isso é requisito: o mesmo leitor vai
+    servir a pôquer (2), truco (3), pif-paf e cacheta (9). Qualquer tamanho
+    estável é aceito.
+
+    Até 2026-08-19 só eram aceitos os tamanhos `0`, `hand_size` e
+    `hand_size + 1`, para não exibir a bagunça da transição — no ato de pôr ou
+    tirar uma carta a mão passa na frente e a leitura desce a 6-8 por um
+    segundo. Quem faz esse trabalho agora é só a estabilidade: essa bagunça não
+    fica parada, então não sobrevive a `lock_frames`. O custo é que uma leitura
+    incompleta MAS estável passa a ser exibida — inevitável, já que "incompleta"
+    só existe quando se sabe o tamanho certo, e agora não se sabe.
 
     Versões anteriores travavam a mão UMA vez e seguravam até o botão "Reler
     mão", para o overlay nunca oscilar numa live. Trocado a pedido: o custo
@@ -21,10 +29,9 @@ class StableHand:
     A estabilidade agora vem só da histerese (score + `lock_frames`).
     """
 
-    def __init__(self, hand_size: int = 9, rise: float = 0.34,
+    def __init__(self, rise: float = 0.34,
                  decay: float = 0.06, in_thresh: float = 0.5,
                  lock_frames: int = 12):
-        self.hand_size = hand_size
         self.rise = rise          # quanto o score sobe por aparição
         self.decay = decay        # quanto cai por frame ausente
         self.in_thresh = in_thresh
@@ -89,20 +96,11 @@ class StableHand:
             self._last_candidate = cand_key
             self._stable = 1
 
-        # ACOMPANHA, mas só aceita mão PLAUSÍVEL: vazia (jogador abaixou as
-        # cartas), `hand_size` (mão normal) ou `hand_size + 1` (instante da
-        # compra). Qualquer outro tamanho é bagunça de transição — no ato
-        # físico de pôr ou tirar uma carta a mão passa na frente, cartas ficam
-        # ocultas e os frames borram, e a leitura desce a 6, 7, 8 por um
-        # segundo. Sem este filtro a tela mostrava essa bagunça, que é o que
-        # dava a sensação de "ele fica trocando as cartas sozinho".
-        #
-        # O custo: se a leitura de fato estabilizar num tamanho inesperado, a
-        # tela segura a mão anterior em vez de mostrar uma mão incompleta.
-        # É o comportamento pedido — travado, e mudando só para mão inteira.
-        tamanhos_plausiveis = (0, self.hand_size, self.hand_size + 1)
+        # Qualquer tamanho serve — o leitor não sabe que jogo é este. A única
+        # exigência é ESTABILIDADE: a bagunça da transição (a mão passando na
+        # frente, cartas ocultas, frames borrados) muda de tamanho a cada
+        # frame e não sobrevive a `lock_frames`.
         if (self._stable >= self.lock_frames
-                and len(candidate) in tamanhos_plausiveis
                 and cand_key != tuple(sorted(self._locked))):
             self._locked = list(candidate)
             return True
@@ -110,6 +108,27 @@ class StableHand:
 
     @property
     def cards(self) -> list[str]:
+        """A mão travada, na ordem FÍSICA mais recente que se conhece.
+
+        O CONJUNTO é o travado — é ele que dá estabilidade e gera evento. A
+        ORDEM, não: ela acompanha a leitura viva sempre que essa leitura mostra
+        exatamente as mesmas cartas.
+
+        Antes a ordem congelava no instante da trava, e havia um jeito garantido
+        de sair errada: a carta que estivesse ausente NAQUELE frame não tinha
+        posição conhecida e ia para o FIM da lista (ver `_candidate`) — onde
+        ficava até a próxima troca de mão, mesmo depois de reaparecer no lugar
+        certo. É o que o jogador vê ao encaixar uma carta no meio do leque:
+        medido numa partida de 5 min, 16,9% dos frames com a mão certa tinham a
+        ordem errada, sempre a carta nova jogada para o fim.
+
+        A ordem só é atualizada quando a leitura viva bate em CONJUNTO com a
+        travada. Enquanto o leitor estiver mostrando outra coisa (carta oculta,
+        transição), a última ordem boa é preservada — senão o overlay ficaria
+        remexendo as cartas a cada frame borrado, que é o problema oposto.
+        """
+        if self._locked and Counter(self._last_live) == Counter(self._locked):
+            return list(self._last_live)
         return list(self._locked)
 
     @property
