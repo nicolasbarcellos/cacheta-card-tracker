@@ -124,7 +124,24 @@ instável, e a mão indo a zero (jogador abaixou as cartas) não pode virar nove
    passou a ser a proteção central: medido, desligá-lo leva a contradição de 7,5% para **32,7%**.
    O corte por `misses` antes de peso continua no `_corta`, e vale se o teto voltar.
 
-   Duas proteções que vieram depois e não são óbvias:
+   **A carta segurada À PARTE não é da mão** (`_so_o_leque`, 2026-08-19). O jogador pega a carta
+   com a outra mão e fica com ela fora do leque enquanto decide onde encaixar; o leitor já a
+   mostrava como carta da mão, antes de ela chegar lá. O leque é uma CORRENTE de cartas que se
+   encostam, então basta ligar as vizinhas em x que estejam perto e ficar com o maior grupo.
+
+   Duas coisas que a medição ensinou e que não são óbvias:
+
+   - **A distância sozinha não separa.** O leque também se parte quando as cartas do meio deixam
+     de ser detectadas, e as duas populações se sobrepõem: nos vãos acima de 1,5 largura de caixa,
+     o pedaço de leque tem p50 1,6 e p90 4,0, a carta à parte tem p50 1,9 e p90 5,2. O que separa
+     de verdade é a **vaga**: o pedaço do leque tem vaga estabelecida, com votos e posição; a carta
+     recém-pega não tem nada. Por isso só cai o grupo que está longe **e** não casa com vaga.
+   - **A ordem importa dentro do `update`.** Aplicar o corte ANTES da checagem de oclusão fazia um
+     leque momentaneamente partido virar "sumiram 3 cartas", disparar o congelamento e travar a
+     tela: medido, a contradição ia de 7,5% para **76%** e a mão exibida mudava 4 vezes numa
+     partida inteira. O corte tem de vir depois.
+
+   Duas proteções que vieram antes e também não são óbvias:
 
    - **Histerese de rótulo** (`fan_win_margin = 2.5`): para TROCAR a carta de uma vaga já
      estabelecida, a concorrente precisa ganhar por essa margem. Sem isso, alguns frames borrados

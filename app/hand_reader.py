@@ -38,7 +38,7 @@ class FanReader:
                  shift_tol: float = 20.0, max_shift: float = 200.0,
                  win_margin: float = 1.6,
                  frame_w: int = 0, frame_h: int = 0, borda: float = 0.0,
-                 peso_min: float = 0.0):
+                 peso_min: float = 0.0, vao_grupo: float = 0.0):
         self.match_dist = match_dist
         # Zona morta nas bordas do quadro. Uma carta que desce abaixo do
         # enquadramento tem o índice CORTADO, e o modelo palpita em cima de
@@ -52,6 +52,8 @@ class FanReader:
         self.borda = borda
         # Piso de peso RELATIVO à mediana das vagas — ver `_recompute`.
         self.peso_min = peso_min
+        # Vão que separa a carta segurada à parte do leque — ver `_so_o_leque`.
+        self.vao_grupo = vao_grupo
         self.window = window
         self.min_appear = min_appear
         self.expire = expire
@@ -88,6 +90,69 @@ class FanReader:
         return (x1 <= self.borda or y1 <= self.borda
                 or x2 >= self.frame_w - self.borda
                 or y2 >= self.frame_h - self.borda)
+
+    def _so_o_leque(self, detections):
+        """Só as detecções do LEQUE — a carta segurada à parte não é da mão.
+
+        O jogador pega a carta com a outra mão e fica com ela fora do leque
+        enquanto decide onde encaixar. Sem esta regra o leitor já a mostrava
+        como carta da mão, antes de ela chegar lá — foi o primeiro defeito que
+        o usuário apontou ao testar o leitor rápido.
+
+        O leque é uma CORRENTE: cada carta encosta na vizinha. Basta então
+        ligar as detecções vizinhas em x que estejam perto o bastante e ficar
+        com o maior grupo. A carta separada não se liga a ninguém e cai.
+
+        A distância é medida em LARGURAS DE CAIXA, para não depender de quão
+        perto da câmera está o leque. Medido nas duas partidas gravadas
+        (142 mil vãos): dentro do leque o vão fica em 0,63-0,70 na mediana e
+        1,3-1,9 no p99; acima de 2,5 há só 0,1% dos vãos, que é a cauda da
+        carta fora do leque.
+
+        Um grupo separado NÃO é descartado se ele casa com vaga já estabelecida:
+        o leque também se parte quando as cartas do meio deixam de ser
+        detectadas por um instante, e aí os dois pedaços são da mão — eles têm
+        vaga, história de votos, posição conhecida. A carta que acabou de ser
+        pega não tem nada disso. Sem essa ressalva a regra custava caro: medido
+        na partida de 19/08, a contradição subia de 7,5% para 9,2%.
+
+        Fica então: todo grupo que encosta em vaga existente, mais o MAIOR
+        grupo (que é o leque no começo, quando ainda não há vaga nenhuma).
+        """
+        if not self.vao_grupo or len(detections) < 2:
+            return detections
+        larguras = sorted(d.box[2] - d.box[0] for d in detections)
+        w = larguras[len(larguras) // 2]
+        if w <= 0:
+            return detections
+        limite = self.vao_grupo * w
+        ordenadas = sorted(detections,
+                           key=lambda d: (d.box[0] + d.box[2]) / 2)
+        grupos, atual = [], [ordenadas[0]]
+        for ant, d in zip(ordenadas, ordenadas[1:]):
+            ax = (ant.box[0] + ant.box[2]) / 2
+            ay = (ant.box[1] + ant.box[3]) / 2
+            dx = (d.box[0] + d.box[2]) / 2
+            dy = (d.box[1] + d.box[3]) / 2
+            if ((dx - ax) ** 2 + (dy - ay) ** 2) ** 0.5 <= limite:
+                atual.append(d)
+            else:
+                grupos.append(atual)
+                atual = [d]
+        grupos.append(atual)
+        if len(grupos) == 1:
+            return detections
+
+        maior = max(grupos, key=lambda g: (len(g),
+                                           sum(d.confidence for d in g)))
+        mantidos = []
+        for g in grupos:
+            if g is maior or any(
+                    self._match((d.box[0] + d.box[2]) / 2,
+                                (d.box[1] + d.box[3]) / 2)[0] is not None
+                    for d in g):
+                mantidos += g
+        return mantidos
 
     def _match(self, cx, cy):
         """Vaga mais próxima dentro do raio, e a distância até ela."""
@@ -193,6 +258,14 @@ class FanReader:
             if self._occluded >= self.expire:
                 self._slots.clear()
             self._occluded = 0
+
+        # A carta que o jogador segura FORA do leque ainda não é da mão — some
+        # daqui e não cria vaga nem vota. Isto vem DEPOIS da checagem de
+        # oclusão de propósito: aplicado antes, um leque momentaneamente
+        # partido (cartas do meio não detectadas) virava "sumiram 3 cartas",
+        # disparava o congelamento e a tela travava. Medido: a contradição ia
+        # de 7,5% para 76% e a mão exibida mudava 4 vezes numa partida inteira.
+        detections = self._so_o_leque(detections)
 
         centers = [((d.box[0] + d.box[2]) / 2, (d.box[1] + d.box[3]) / 2)
                    for d in detections]

@@ -524,3 +524,45 @@ def test_carta_COMPRADA_nasce_fraca_e_o_piso_nao_a_derruba():
     for _ in range(4):                      # a carta comprada acabou de entrar
         r.update(fan(("AD", 100), ("AH", 300), ("9S", 500), ("KC", 700)))
     assert r.cards == ["AD", "AH", "9S", "KC"]
+
+
+def test_carta_na_OUTRA_MAO_nao_entra_no_leque():
+    """O defeito que o usuario relatou ao testar o leitor rapido.
+
+    Ele segurava 5 cartas numa mao e pegava a sexta com a outra; o leitor ja
+    mostrava a carta solta como se estivesse no leque, antes de ele encaixar.
+
+    O leque e uma CORRENTE de cartas que se encostam. A carta segurada a parte
+    nao se liga a ninguem, e por isso cai — medido nas duas partidas gravadas,
+    o vao dentro do leque fica em 0,7 largura de caixa (p99 = 1,3-1,9), e a
+    carta separada esta muito alem disso.
+    """
+    r = FanReader(min_appear=3, window=30, vao_grupo=2.5)
+    leque = [d(c, 100 + i * 60, size=40) for i, c in enumerate(
+        ["AS", "2H", "3D", "4C", "5S"])]
+    solta = d("KC", 900, size=40)             # na outra mao, longe do leque
+    for _ in range(20):
+        r.update(leque + [solta])
+    assert r.cards == ["AS", "2H", "3D", "4C", "5S"]   # o KC nao entrou
+
+    # agora ele ENCAIXA a carta no leque (aqui na ponta, para o teste medir a
+    # entrada e nao a reacomodacao das outras vagas)
+    encaixada = list(leque) + [d("KC", 100 + 5 * 60, size=40)]
+    for _ in range(20):
+        r.update(encaixada)
+    assert r.cards == ["AS", "2H", "3D", "4C", "5S", "KC"]
+
+
+def test_leque_inteiro_nao_e_partido_pelo_vao():
+    """A regra nao pode cortar o proprio leque: so o que esta MUITO longe.
+
+    Com o vao normal entre vizinhas (~0,7 largura), a corrente tem de
+    sobreviver inteira — inclusive num leque bem aberto.
+    """
+    r = FanReader(min_appear=3, window=30, vao_grupo=2.5)
+    # 40px de caixa, 80px de passo = 2,0 larguras: aberto, mas ainda leque
+    leque = [d(c, 100 + i * 80, size=40) for i, c in enumerate(
+        ["AS", "2H", "3D", "4C", "5S", "6H", "7D", "8C", "9S"])]
+    for _ in range(20):
+        r.update(leque)
+    assert len(r.cards) == 9

@@ -60,9 +60,12 @@ def test_replay_reproduz_a_partida_gravada(tmp_path):
                           recorder=rec, i=i, verbose=False)
 
     compra = BASE + [("KC", 900)]
-    # descarta o 9D; as outras cartas NÃO mudam de lugar, para o teste medir
-    # a fidelidade do replay e não a reacomodação das vagas
-    descarte = [p for p in BASE if p[0] != "9D"] + [("KC", 900)]
+    # descarta o 9D e o KC DESLIZA para a vaga dele: no leque real as cartas se
+    # encostam, e desde 2026-08-19 o leitor usa isso (`_so_o_leque`) para
+    # ignorar a carta segurada à parte. Deixar um buraco de 200px aqui faria o
+    # KC virar "carta fora do leque" — que é o comportamento certo, mas nao e o
+    # que este teste mede.
+    descarte = [p for p in BASE if p[0] != "9D"] + [("KC", 800)]
 
     alimenta(BASE, ASSENTA)
     alimenta(compra, ASSENTA)

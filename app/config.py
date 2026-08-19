@@ -110,6 +110,29 @@ class Config:
     # custo lá. ATENÇÃO ao mexer: o platô é ESTREITO e cada jogada vale 5 pontos
     # numa amostra de 19; o mecanismo é sólido, o número é fraco. 0 desliga.
     fan_peso_min: float = 0.6
+    # Vão (em LARGURAS DE CAIXA) que separa a carta segurada À PARTE do leque.
+    # O jogador pega a carta com a outra mão e fica com ela fora do leque
+    # enquanto decide onde encaixar — sem esta regra o leitor já a mostrava
+    # como carta da mão. O leque é uma corrente de cartas que se encostam;
+    # acima deste vão a corrente quebra e o grupo menor é descartado.
+    # Ver `FanReader._so_o_leque`.
+    #
+    # Medido nas partidas gravadas (142 mil vãos entre vizinhas): dentro do
+    # leque a mediana é 0,63-0,70 e o p99 fica em 1,3-1,9; acima de 2,5 há só
+    # 0,1% dos vãos.
+    #
+    # ATENÇÃO: a distância SOZINHA não separa as duas situações. Medido nos
+    # vãos maiores que 1,5, o pedaço de leque que se soltou (carta do meio não
+    # detectada) e a carta segurada à parte têm distribuições sobrepostas —
+    # p50 1,6 contra 1,9, p90 4,0 contra 5,2. O que separa de verdade é a
+    # VAGA: o pedaço do leque tem vaga estabelecida, com história de votos e
+    # posição conhecida; a carta recém-pega não tem nada. Por isso `_so_o_leque`
+    # descarta só o grupo que está longe E não casa com vaga nenhuma.
+    #
+    # Custo medido na partida de 19/08: contradição 5,4% -> 7,1%. Boa parte
+    # disso é o comportamento PEDIDO (a carta só aparece depois de encaixada),
+    # que a métrica não sabe distinguir de erro. 0 desliga.
+    fan_vao_grupo: float = 2.5
     # Frames com a MESMA leitura antes de trocar a mão exibida. Com 12 (~0,8s)
     # uma leitura errada durante a organização das cartas na mão durava tempo
     # suficiente para entrar — o jogador ainda estava acomodando o leque, com
