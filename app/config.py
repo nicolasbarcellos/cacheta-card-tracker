@@ -103,6 +103,20 @@ class Config:
     # compras e descartes preservado); em 18 px começa a cortar carta legítima
     # e um descarte sai errado. 0 desliga.
     fan_borda: float = 8.0
+    # Piso de peso, como FRAÇÃO da mediana das vagas, aplicado SÓ à vaga cujo
+    # rótulo DUPLICA outra carta da mão. Abaixo dele ela não conta como carta.
+    # Mata o fantasma que nasce de erro de classe: quando o modelo lê o A♥ como
+    # A♦ por meio segundo, a mão sai com o A♥ (que ainda não expirou) mais dois
+    # A♦ — dez cartas que nunca estiveram juntas em frame nenhum, e daí uma
+    # compra e um descarte que não aconteceram. Ver `FanReader._recompute`.
+    #
+    # Varrido contra as DUAS partidas gravadas, re-detectadas com o modelo de
+    # 18/08. Na de 12/08 o platô de 100%/100% é 0,6-0,7 (0,5 dá 95%/94,7% e
+    # 0,8 volta a perder jogada); 0,6 é o que deixa menos fantasma. A de 11/08
+    # fica em 100%/100% para qualquer valor de 0 a 0,8 — ou seja o piso não tem
+    # custo lá. ATENÇÃO ao mexer: o platô é ESTREITO e cada jogada vale 5 pontos
+    # numa amostra de 19; o mecanismo é sólido, o número é fraco. 0 desliga.
+    fan_peso_min: float = 0.6
     # Frames com a MESMA leitura antes de trocar a mão exibida. Com 12 (~0,8s)
     # uma leitura errada durante a organização das cartas na mão durava tempo
     # suficiente para entrar — o jogador ainda estava acomodando o leque, com

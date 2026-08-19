@@ -472,3 +472,55 @@ def test_carta_que_SALTA_para_a_borda_e_perdida_de_proposito():
                   Detection(card=Card.from_label("KH"), confidence=0.5,
                             box=(700, 1050, 730, 1080))])
     assert r.cards == ["AS"]
+
+
+def test_carta_duplicada_e_FRACA_nao_entra_na_mao():
+    """O fantasma medido na partida de 12/08, em miniatura.
+
+    O modelo lê o A♥ como A♦ por meio segundo. A vaga do A♥ ainda não expirou
+    (é o que faz o leitor aguentar oclusão), então a mão sairia com A♥ MAIS
+    dois A♦ — dez cartas que nunca estiveram juntas em frame nenhum. O tracker
+    lê isso como carta que entrou, e sai uma compra que não aconteceu.
+
+    A intrusa se denuncia por DUAS marcas juntas: duplica uma carta que já está
+    na mão, e é muito mais fraca que as outras (medido ao vivo: 11,25 de
+    confiança acumulada contra ~50 das vizinhas).
+    """
+    r = FanReader(min_appear=3, window=60, peso_min=0.6)
+    firmes = fan(("AD", 100), ("AH", 300), ("9S", 500))
+    for _ in range(40):
+        r.update(firmes)
+    assert r.cards == ["AD", "AH", "9S"]
+    for _ in range(6):                      # rajada curta de leitura errada
+        r.update(firmes + [d("AD", 380, conf=0.5)])
+    assert r.cards == ["AD", "AH", "9S"]    # a segunda A♦ não vira carta
+
+
+def test_gemea_LEGITIMA_sobrevive_ao_piso_de_peso():
+    """Dois baralhos: carta repetida na mão é jogada válida, não erro.
+
+    A diferença para o fantasma é o peso: a gêmea de verdade é vista tanto
+    quanto as outras. Se o piso a derrubasse, ele estaria trocando um fantasma
+    por uma carta perdida.
+    """
+    r = FanReader(min_appear=3, window=60, peso_min=0.6)
+    leque = fan(("AD", 100), ("AD", 300), ("9S", 500))
+    for _ in range(40):
+        r.update(leque)
+    assert r.cards == ["AD", "AD", "9S"]
+
+
+def test_carta_COMPRADA_nasce_fraca_e_o_piso_nao_a_derruba():
+    """Por que o piso só vale para rótulo DUPLICADO.
+
+    Medido: um piso de peso sem essa condição derrubava a carta recém-comprada
+    — ela também nasce fraca — e duas compras da partida de 11/08 passaram a
+    sair com a carta errada. Quem entra na mão com rótulo NOVO é sempre carta,
+    por mais fraca que esteja.
+    """
+    r = FanReader(min_appear=3, window=60, peso_min=0.6)
+    for _ in range(40):
+        r.update(fan(("AD", 100), ("AH", 300), ("9S", 500)))
+    for _ in range(4):                      # a carta comprada acabou de entrar
+        r.update(fan(("AD", 100), ("AH", 300), ("9S", 500), ("KC", 700)))
+    assert r.cards == ["AD", "AH", "9S", "KC"]

@@ -37,7 +37,8 @@ class FanReader:
                  max_slots: int | None = None,
                  shift_tol: float = 20.0, max_shift: float = 200.0,
                  win_margin: float = 1.6,
-                 frame_w: int = 0, frame_h: int = 0, borda: float = 0.0):
+                 frame_w: int = 0, frame_h: int = 0, borda: float = 0.0,
+                 peso_min: float = 0.0):
         self.match_dist = match_dist
         # Zona morta nas bordas do quadro. Uma carta que desce abaixo do
         # enquadramento tem o índice CORTADO, e o modelo palpita em cima de
@@ -49,6 +50,8 @@ class FanReader:
         self.frame_w = frame_w
         self.frame_h = frame_h
         self.borda = borda
+        # Piso de peso RELATIVO à mediana das vagas — ver `_recompute`.
+        self.peso_min = peso_min
         self.window = window
         self.min_appear = min_appear
         self.expire = expire
@@ -348,15 +351,58 @@ class FanReader:
             return atual          # não ganhou por margem: mantém o que estava
         return campeao
 
+    def _corta(self, slots: list[dict], teto: int) -> list[dict]:
+        """Deixa no máximo `teto` vagas, cortando as MENOS vistas.
+
+        `misses` vem antes do peso de propósito: depois de o leque se mover, a
+        vaga velha ainda é "forte" (muitos votos acumulados) mas está ausente,
+        e quem tem de ganhar é a vaga nova, que é a que corresponde à carta.
+        """
+        if len(slots) <= teto:
+            return slots
+        ordenadas = sorted(slots,
+                           key=lambda s: (s["misses"], -self._weight(s["votes"])))
+        return ordenadas[:teto]
+
     def _recompute(self) -> bool:
         confirmed = [s for s in self._slots if len(s["votes"]) >= self.min_appear]
-        if self.max_slots is not None and len(confirmed) > self.max_slots:
-            # sobrou vaga: corta pelas MENOS vistas recentemente. `misses`
-            # vem primeiro de propósito — depois de o leque se mover, a vaga
-            # velha ainda é "forte" (muitos votos) mas está ausente, e quem
-            # tem de ganhar é a vaga nova, que é a que corresponde à carta.
-            confirmed.sort(key=lambda s: (s["misses"], -self._weight(s["votes"])))
-            confirmed = confirmed[:self.max_slots]
+        # PISO DE PESO: vaga muito mais fraca que as vizinhas não é carta.
+        #
+        # A vaga sobrevive aos frames em que a carta não aparece — é o que faz
+        # o leitor aguentar oclusão. O efeito colateral é que a mão exibida
+        # vira uma UNIÃO ao longo do tempo, e duas leituras que se excluem
+        # podem coexistir nela. Medido na partida de 12/08: o A♥ foi lido como
+        # A♦ por meio segundo e nasceu uma vaga a 61 px da do A♥ — perto demais
+        # para ser outra carta, longe demais para o casamento fundir. A mão
+        # saiu com A♥ MAIS dois A♦: dez cartas que nunca estiveram juntas em
+        # frame nenhum, e daí uma compra e um descarte que não aconteceram.
+        #
+        # A intrusa se distingue por DUAS marcas juntas, e é preciso as duas:
+        #
+        # - ela DUPLICA uma carta que já está na mão (é um erro de classe, não
+        #   uma carta nova);
+        # - e é muito mais fraca que as outras: 11,25 de confiança acumulada
+        #   contra ~50 das vizinhas.
+        #
+        # Exigir só o peso não serve, e foi medido: a carta recém-comprada
+        # também nasce fraca, e o piso sozinho derrubava compra de verdade —
+        # na partida de 11/08, duas compras passaram a sair com a carta errada.
+        # Gêmeas de verdade existem (o jogo usa dois baralhos), mas chegam pela
+        # compra e engordam como qualquer carta legítima; a duplicada por erro
+        # de leitura fica fraca porque disputa confiança com a leitura certa.
+        if self.peso_min and len(confirmed) >= 3:
+            pesos = {id(s): self._weight(s["votes"]) for s in confirmed}
+            ordem = sorted(pesos.values())
+            mediana = ordem[len(ordem) // 2]
+            rotulos = Counter(self._winner(s["votes"], s.get("label"))
+                              for s in confirmed)
+            confirmed = [
+                s for s in confirmed
+                if not (rotulos[self._winner(s["votes"], s.get("label"))] > 1
+                        and mediana > 0
+                        and pesos[id(s)] < self.peso_min * mediana)]
+        if self.max_slots is not None:
+            confirmed = self._corta(confirmed, self.max_slots)
         confirmed.sort(key=lambda s: s["x"])
         cards = []
         for s in confirmed:

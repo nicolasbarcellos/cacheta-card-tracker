@@ -627,7 +627,15 @@ errava).
 
 Meta de aceite do projeto: ≥95% dos descartes e ≥90% das compras corretos numa partida de teste.
 
-**Onde a meta está (2026-08-12, gabaritos corrigidos, config atual):**
+**Onde a meta está (2026-08-19, modelo de 18/08 + `fan_peso_min`, as duas partidas re-detectadas
+do vídeo):** compras **32/32 = 100%** ✅ e descartes **31/31 = 100%** ✅ — a meta bate pela
+primeira vez. Com três ressalvas que valem mais que o número: o `fan_peso_min` foi afinado NESTAS
+duas partidas, uma delas entrou no treino do modelo, e 31 descartes não provam ≥95% (fazem falta
+~60). O teste que valeria é uma partida NOVA e curta.
+
+A tabela abaixo é a medição anterior, ao vivo, e fica como registro do ponto de partida:
+
+**Onde a meta estava (2026-08-12, gabaritos corrigidos):**
 
 | partida | compras | descartes |
 |---|---|---|
@@ -668,13 +676,59 @@ só vale assim, ver a armadilha logo abaixo:
 sobrevive a tudo isto" — não aparece mais. Classe correta no conjunto REAL do holdout, com
 `eval_classes.py ... training/datasets/real/20260811-211614`: 99,2% → **99,5%** (31 erros → 18).
 
-**O que PIOROU: fantasmas dobraram (5 → 11)**, e é o que fica aberto. Fantasma não baixa a nota (a
+**Os fantasmas dobraram (5 → 11)** — atacados no dia seguinte, ver "Os fantasmas: duas famílias".
+Com o `fan_peso_min = 0,6`, as duas partidas passaram a fechar em **100% de compras e 100% de
+descartes** (32/32 e 31/31 acumulado), e sobraram 8 fantasmas, todos da família "carta tirada do
+leque e recolocada". O parágrafo abaixo é o diagnóstico original, que continua valendo como
+descrição do sintoma: Fantasma não baixa a nota (a
 conta é sobre jogadas que aconteceram) mas suja o overlay e alimenta o `_discard_history`. Repare
 que em `t=148,2s` o fantasma novo é um `discard KS` no mesmo ponto em que o modelo velho dava
 `carta_errada 5D→AS`: a carta agora é lida CERTA, mas some do leque por um instante — o que sobrou
 ali é instabilidade de PIPELINE, não erro de classe. Suspeita a investigar: nos frames reais só a
 MÃO é rotulada, então carta na mesa e monte entram como região visível **sem rótulo**, e este
 arquivo já ensina que isso treina o modelo a chamar aquele padrão de fundo.
+
+#### Os fantasmas: duas famílias, e o que separa uma da outra (2026-08-19)
+
+Fantasma nunca vem sozinho: são PARES (`draw X` seguido de `discard X`, ou o inverso), cada par uma
+carta que entrou e saiu da mão exibida. Diagnosticados um a um, com as vagas do `FanReader` na tela
+— e são dois mecanismos diferentes, com causas diferentes.
+
+**Família 1 — carta DUPLICADA por erro de classe.** O modelo lê o A♥ como A♦ por meio segundo. A
+vaga do A♥ não expira nesse tempo (é o que faz o leitor aguentar oclusão) e nasce uma vaga nova a
+61 px dela — perto demais para ser outra carta, longe demais para o casamento de 50 px fundir, e
+com rótulo DIFERENTE, que é o caso em que a regra de uma-detecção-por-vaga manda abrir vaga nova.
+A mão sai com **A♥ mais dois A♦: dez cartas que nunca estiveram juntas em frame nenhum**. O
+`StableHand` piora: com `decay = 0,06` a carta que sumiu leva ~10 frames para cair do conjunto,
+então a mão exibida é uma UNIÃO no tempo, e duas leituras que se excluem coexistem nela.
+
+A intrusa se denuncia por duas marcas JUNTAS — e é preciso as duas: **duplica** uma carta que já
+está na mão, e é muito mais **fraca** (medido: 11,25 de confiança acumulada contra ~50 das
+vizinhas). É o `fan_peso_min`. Resultado nas duas partidas re-detectadas: **12/08 foi de
+85%/84,2% para 100%/100%** e 11/08 ficou em 100%/100%. Os dois pares de A♦ fantasma morreram.
+
+**Família 2 — carta tirada do leque e recolocada.** O jogador levanta uma carta para descartar,
+segura fora do leque, muda de ideia e recoloca. Medido: o 5♦ saiu de `y=500` para `y=58` com o
+leque inteiro em `y≈510-644`, e voltou lido como 4♦. Sai um descarte quando ela deixa a fileira e
+uma compra quando volta. **Continua aberta**: são os 3 pares que sobram em 12/08. Não é bem um erro
+de leitura — a carta realmente saiu da mão.
+
+Duas tentativas MEDIDAS E REFUTADAS, para não repetir:
+
+- **Teto pelo pico visto** ("a mão não pode ter mais cartas do que o modelo viu de uma vez").
+  Separa bem em 12/08, mas em 11/08 o modelo nunca vê as 10 juntas em algumas compras, e o corte
+  derruba justamente a carta RECÉM-COMPRADA (é a de menor peso): duas compras passaram a sair com
+  a carta errada.
+- **Piso de peso sem exigir rótulo duplicado.** Mesma falha, pela mesma razão: a carta comprada
+  também nasce fraca. É por isso que o `fan_peso_min` só se aplica a rótulo repetido.
+- **Guarda de "fora do arco do leque"** (vaga cuja vizinha em x está a mais de N alturas de caixa
+  em y). O mecanismo EXISTE — as vagas fantasmas do 4♦ e do 6♦ estavam mesmo a 350 px do leque — e
+  sozinha ela até recuperava 2 compras, mas trocava 3 descartes perdidos por 3 com carta errada; e
+  combinada com o `fan_peso_min` ela PIORA (2 descartes errados). Foi retirada do código.
+
+**Cuidado ao mexer no `fan_peso_min`**: o platô de 100%/100% é estreito (0,6-0,7) e cada jogada
+vale 5 pontos numa amostra de 19. O mecanismo é sólido, o número é fraco — confirme com partida
+nova antes de tratar 0,6 como verdade.
 
 #### `--redetectar` NÃO é comparável com o número ao vivo
 
