@@ -286,10 +286,16 @@ Duas consequências, ambas observadas:
 
 Antes de culpar o modelo por erro de VALOR, verifique se o leque estava parado.
 E note o limite físico: o jitter p95 (66 px) empata com o menor espaçamento entre
-cartas (p05 = 69 px) — não existe `fan_match_dist` que atenda os dois extremos. O
-conserto estrutural é compensar a translação GLOBAL do leque antes de casar as vagas
-(a mão move o leque inteiro junto), já que numa partida de verdade o jogador segura
-as cartas e não pode apoiá-las.
+cartas (p05 = 69 px) — não existe `fan_match_dist` que atenda os dois extremos.
+
+O conserto estrutural — compensar a translação GLOBAL do leque antes de casar as vagas
+— **já existe** desde `a542f75` (2026-07-30): `FanReader._estimate_shift`, chamado em
+`hand_reader.py:196`, mede o deslocamento comum por VOTAÇÃO (cada par detecção/vaga
+propõe um deslocamento; vence o mais votado, e só com suporte de metade das vagas) e
+desloca todas as vagas antes do casamento. Este parágrafo dizia o contrário até
+2026-08-12; o comentário do `config.py` também. Ao ler qualquer conselho de "apoiar a
+mão para reduzir o jitter", lembre que o tremor GLOBAL já é compensado — o que sobra
+é o movimento relativo entre cartas.
 
 ### Enquadramento é metade do resultado
 
@@ -313,6 +319,84 @@ uma). Todas com **10 cartas** — é no instante da compra que o leque aperta e 
 
 Critério prático para conferir sem medir nada: no `/stream/hand`, **as caixas verdes não podem se
 encostar**. Duas coladas indicam onde vai falhar.
+
+Cuidado com esse critério, porém: "caixas encostando" é um PROXY visual, e pessimista. Quem casa
+vaga é a distância EUCLIDIANA entre centros contra `fan_match_dist` (`hand_reader.py:93`) — duas
+caixas podem se encostar com os centros a 70 px, que é folgado. Ao medir de verdade, meça centros.
+
+### Comparar o aperto do leque: sintético × real (e como errei a medição duas vezes)
+
+Em 2026-08-12 tentei explicar o erro de valor do modelo por "o leque real é mais apertado do que
+qualquer coisa que o gerador produziu". **A hipótese não se sustentou**, mas a medição ficou — e
+as duas armadilhas em que caí valem mais que a hipótese.
+
+A grandeza que compara sintético e real apesar de canvas e câmera diferentes é **adimensional**:
+distância entre índices vizinhos ÷ largura do índice. Abaixo de 1, os índices se sobrepõem.
+
+| | sintético | 2026-08-11 | 2026-08-12 |
+|---|---|---|---|
+| mediana | 0,89 | 0,78 | 0,74 |
+| p05 | 0,67 | 0,50 | 0,50 |
+| pares sobrepostos | 72,9% | 77,8% | 79,6% |
+| (px: dist / largura) | — | 79,6 / 102 | 81,1 / 109 |
+
+O sintético é **modestamente mais frouxo** que o real — ~15% na mediana, e a cauda vai a 0,67 em
+vez de 0,50. Existe uma lacuna, mas é bem menor do que parecia.
+
+**Duas armadilhas de medição, ambas caídas em 2026-08-12, e as duas inflaram a conclusão:**
+
+1. **Deduzir do parâmetro em vez de medir o rótulo.** Olhando só `generate_fans.py` (passo de
+   0,20-0,32 da largura da carta contra 0,18 de índice) parece que o sintético NUNCA sobrepõe
+   índices. Falso: 66-73% dos pares se sobrepõem, porque rotação e perspectiva mexem no
+   espaçamento tanto quanto o passo. Corolário prático: **mexer no passo quase não move a
+   distribuição** — baixar o mínimo de 0,20 para 0,12 mudou a mediana de 0,92 para 0,89.
+2. **Medir distância entre vizinhas SEM deduplicar.** As detecções do `sessao.jsonl` são gravadas
+   brutas de propósito, então "duas detecções a 20 px" quase sempre é o MESMO canto lido duas
+   vezes, não duas cartas. Sem passar pelo `hand_instances` antes, a partida de 2026-08-12 parecia
+   ter uma cauda muito mais apertada que a de 11/08 (p05 19,6 px contra 46,5 px) e isso virou
+   explicação para a queda dos descartes. Deduplicando, as duas partidas ficam **idênticas**
+   (p05 0,50 nas duas). A explicação era um artefato.
+
+**Portanto: a diferença de geometria NÃO explica a diferença de nota entre as duas partidas.**
+Fica em aberto o que explica.
+
+### O erro que SOBREVIVE a tudo isto: K♠ lido como A♠
+
+Independente da geometria, este é o fato medido em 2026-08-12 e é o que derrubou os descartes.
+
+Na posição de UMA carta (a mesma vaga, raio de 28 px), o modelo devolveu **A♠ em 471 frames com
+confiança média 0,723** contra **K♠ em 149 frames a 0,587**. O rótulo errado venceu em frequência
+E em confiança — a votação ponderada do `FanReader` não tinha o que fazer, ele só escolhe entre o
+que recebe, e o `hand_instances` fica com a mais confiante de duas leituras do mesmo canto. Na
+partida inteira, o A♠ — que **nunca existiu**, não aparece em nenhuma jogada do gabarito — rendeu
+**1.949 detecções** contra 6.431 do K♠ real.
+
+O descarte real morreu junto: quando a carta saiu da mão, a vaga já estava rotulada como A♠, e o
+diff não fechou. É erro de MODELO, não de pipeline — e um erro que nenhum parâmetro conserta.
+
+**E o instrumento de aceite é cego para ele.** No mesmo dia, com os mesmos pesos,
+`eval_classes.py` deu **K = 100% (n=62)** e naipe na mesma cor em 0,7%: o modelo parece excelente.
+Já estava escrito que `eval_classes.py` não mede ganho de dado real; agora há um caso em que ele
+dá **100% exatamente na classe que falha ao vivo**. Enquanto a validação for só sintética, ela vai
+continuar aprovando modelos que erram na mesa.
+
+Consequência prática, e é a lição de método:
+
+- **Erro de classe que só aparece ao vivo pede DADO REAL, não mais sintético.** É para isso que
+  `capture_rotulado.py` existe (rotula pela ORDEM, não pelo palpite do modelo, quebrando a
+  circularidade do `auto_annotate.py`). Sobre-amostrar rank fraco no gerador já foi tentado em
+  30/07 e o K nem estava na lista — e mexer no passo do gerador quase não move a distribuição
+  (ver a seção anterior).
+- **Um conjunto de validação REAL é o que falta no projeto.** Sem ele, não há como saber se um
+  retreino melhorou ou piorou o que importa. A gravação de uma partida + o gabarito revisado é
+  matéria-prima para construí-lo.
+
+**RESOLVIDO em 2026-08-18**, e as duas conclusões acima foram o caminho. `extrai_gravacao.py`
+transformou as gravações em dado real rotulado; o retreino com ele **zerou as três cartas erradas
+da partida**, o A♠ incluído (ver "Retreino de 2026-08-18"). O conjunto de validação real também
+existe agora: `eval_classes.py <modelo> <n> training/datasets/real/<partida do holdout>`.
+O texto acima fica como está porque o diagnóstico continua correto — e porque a lição de método
+(erro que só aparece ao vivo pede dado REAL) é o que produziu o conserto.
 
 ### Na BORDA do quadro não nasce carta
 
@@ -341,8 +425,19 @@ somem, 100%/100% preservados); em 18 px começa a cortar carta legítima e um de
 8 é o meio do platô. Custo assumido e testado: carta que **salta** para a borda (mais que
 `match_dist` de uma vez) some da mão em vez de criar vaga.
 
-O segundo sintoma continua aberto — e o conserto de verdade dos dois é **enquadramento**: o leque
-não pode encostar na borda de baixo.
+**Revisto em 2026-08-12, e o segundo sintoma NÃO estava aberto — estava mal medido.** O 3♦ tinha
+sido revisado como fantasma puro, mas a checagem de alternância do gabarito (ver "O erro de revisão
+que INFLA a nota") revelou que **faltava um descarte real de 3♦** logo depois. Os dois são o MESMO
+3♦ em sequência: o evento saiu cedo, quando a carta deixou o QUADRO; quando ela saiu de fato da
+MÃO, o leitor já a tinha dado por ausente e nenhum evento saiu. Um fantasma e uma jogada perdida
+pela mesma causa, e a revisão original contou só metade.
+
+Com o gabarito corrigido e `fan_borda = 8`, a partida de 2026-08-11 fica em **12/12 compras e 12/12
+descartes, zero fantasmas**: a regra não só matou o fantasma como **recuperou o descarte real**.
+É a validação de verdade do `fan_borda`, agora contra um gabarito correto — antes ela media 100%
+num denominador que estava faltando uma jogada.
+
+O conserto de fundo continua sendo **enquadramento**: o leque não pode encostar na borda de baixo.
 
 **Hipótese refutada na mesma medição**: subir o `min_confidence` não resolve. Varrido contra a
 partida real, 0,50 mata fantasma mas derruba os descartes de 100% para 81,8% (carta legítima de
@@ -412,6 +507,58 @@ imagem** — ele numera as detecções da esquerda para a direita, avisa quando 
 cantos fica abaixo de 25 px e já imprime a linha de comando do `capture_rotulado.py` com a ordem
 lida. Custa 10 s e é a única verificação que não depende do que o modelo acha.
 
+### Dado real SEM jogar de novo: `extrai_gravacao.py` (2026-08-18)
+
+O `capture_rotulado.py` resolve a circularidade, mas cobra uma sessão inteira segurando o baralho —
+e o usuário já disse que não consegue ficar 20 min nisso. As partidas gravadas já estão no disco
+com vídeo cru e gabarito revisado, e isso basta:
+
+```
+mão inicial  +  compras e descartes do gabarito  =  mão verdadeira em cada instante
+```
+
+O rótulo de cada detecção vem da POSIÇÃO dela no leque, como no fluxo ao vivo, mas a verdade vem
+do gabarito. Custo para o jogador: **zero**.
+
+A mão inicial é o único elo frouxo: o gabarito só PROVA as cartas que foram descartadas sem terem
+sido compradas (4 de 9 em 11/08, 5 de 9 em 12/08). O script recusa a partida se houver
+contradição, e imprime quais cartas vêm da leitura do modelo — **as duas mãos iniciais foram
+conferidas OLHANDO o frame** (batem exatamente com a mão exibida).
+
+**A ordem física do leque não está no gabarito, e é aí que mora todo o risco.** O gabarito dá o
+CONJUNTO; casar conjunto com posições é o que pode sair errado — e sai. Três coisas medidas, todas
+descobertas auditando as imagens, nenhuma delas óbvia no código:
+
+- **A ordem muda DENTRO do turno.** Resolver uma ordem só por segmento (o trecho entre duas
+  jogadas) rotula deslocado a partir do instante em que o jogador reorganiza o leque. A assinatura
+  é inconfundível: as correções formam um CICLO entre cartas vizinhas (medido em 12/08:
+  `AD->AH`, `AH->7S`, `7S->AD`). Vendo bloco a bloco dá para ver o jogador **deslizando o 7♠** pelo
+  leque entre 66,6 s e 74,6 s. Por isso a ordem é votada por BLOCO de 50 frames, não por segmento.
+- **Detecção fora da fileira do leque.** O canto de BAIXO de uma carta virada, e uma carta largada
+  na MESA dentro do quadro, entram na contagem e a ordenação por x mete a intrusa no meio: 8♠ saiu
+  rotulado A♥. Guarda: salto vertical entre índices vizinhos, em alturas de caixa — medido,
+  mediana 0,28 e p99 1,25, depois um vão até uma cauda de 3,5-4,3. **Qualquer limiar de 1,5 a 3,0
+  corta os mesmos 3,7% dos frames** (platô, como no `MERGE_FACTOR`), então 2,0.
+- **Deslocamento de uma casa** por detecção sobrando ou faltando. Contagem, buraco e concordância
+  NÃO pegam esse caso (metade dos rótulos continua batendo). Guarda: se a leitura do frame é
+  explicada igual de bem por um deslocamento a partir de qualquer ponto de corte, o frame cai.
+  O empate tem de reprovar: com a comparação estrita (só reprovar se o deslocado for MELHOR), o
+  `KS->9S` que a auditoria provou errado volta para o dataset.
+
+Resultado com as três guardas: **721 frames, ~6.750 rótulos** (403 de 11/08 e 318 de 12/08), taxa
+de correção 1,4% (12/08) e 0,8% (11/08). As correções são as confusões que o projeto já conhecia — `AS->KS` (a falha que
+derrubou os descartes), `7C->7S` (naipe na mesma cor), `AH->4H` (o A↔4).
+
+**A auditoria não é opcional, e é o método**: monte uma folha de contato só com os recortes
+CORRIGIDOS e olhe. Na primeira rodada, 4 de 6 correções amostradas estavam erradas — as guardas
+vieram todas de olhar essas imagens, não de raciocinar sobre o código. Mesmo na versão final
+sobraram 3 rótulos ruins em 11/08, rejeitados apagando a imagem de `review/` (o mesmo mecanismo do
+fluxo local; o `finetune_local.py` respeita).
+
+`finetune_local.py --holdout <partida>` deixa uma partida FORA do treino. Sem isso não sobra
+gravação com que medir: `replay.py --redetectar` contra a partida que treinou o modelo mede
+decoreba, não acerto.
+
 ### Hipótese refutada: nitidez do frame não separa acerto de erro
 
 O erro A↔4 aparecia mais com a câmera balançando, o que sugeria filtrar frames borrados
@@ -423,6 +570,10 @@ moeda. Não reimplemente isso sem medir de novo num setup diferente.
 Fluxo local de fine-tuning (sem nuvem), detalhes em `training/README.md`:
 `capture_deck.py` → `generate_fans.py` → `capture_auto.py` → `auto_annotate.py` →
 **revisão manual** → `finetune_local.py`.
+
+Havendo partida gravada com gabarito revisado, `extrai_gravacao.py` substitui `capture_auto.py` +
+`auto_annotate.py` com vantagem: o rótulo vem do gabarito em vez do palpite do modelo, e não custa
+tempo de jogo nenhum.
 
 O passo manual é o que dá qualidade: apagar as fotos erradas em `datasets/local/review/` é como
 se rejeita uma anotação — `finetune_local.py` só usa frames cuja imagem de revisão sobreviveu.
@@ -476,6 +627,66 @@ errava).
 
 Meta de aceite do projeto: ≥95% dos descartes e ≥90% das compras corretos numa partida de teste.
 
+**Onde a meta está (2026-08-12, gabaritos corrigidos, config atual):**
+
+| partida | compras | descartes |
+|---|---|---|
+| 2026-08-11 (9,3 min) | 12/12 = 100% | 12/12 = 100% |
+| 2026-08-12 (14,8 min) | 20/20 = 100% | 13/19 = 68,4% |
+| **acumulado** | **32/32 = 100%** ✅ | **25/31 = 80,6%** ❌ |
+
+Compras batem a meta com folga e **nunca erraram uma carta** em 32 jogadas. Descartes não batem, e
+o erro é concentrado: em 2026-08-12 foram 6 descartes perdidos, com a causa rastreada até o leque
+apertado (ver "O leque real é mais APERTADO que qualquer coisa que o gerador produziu").
+
+Ao comparar as duas partidas, note que 12/12 contra 13/19 dá p ≈ 0,06 num teste exato: é
+**sugestivo, não conclusivo**, de que a segunda foi genuinamente pior. Com denominadores de 12 e 19
+cada jogada vale 5 a 8 pontos percentuais, e nenhuma conclusão fina sobrevive a isso. Provar ≥95%
+com confiança exige ~60 descartes, ou seja ~1 h de jogo acumulada — mas **não precisa ser de uma
+vez**: a nota conta jogadas, então partidas curtas somam.
+
+### Retreino de 2026-08-18: o A♠ morreu (dado real vindo das gravações)
+
+Primeiro treino a usar `extrai_gravacao.py`: 2.000 sintéticas novas + 734 frames locais + **294
+frames reais de 12/08 rotulados pelo gabarito**, 12 épocas, 1280 px, batch 3, ~25 min. A partida de
+11/08 ficou **fora** (`--holdout`), para sobrar com que medir.
+
+Medido com `--redetectar` nas duas partidas, os dois modelos lendo o **MESMO vídeo** — comparação
+só vale assim, ver a armadilha logo abaixo:
+
+| | antigo (`cards_backup_7.pt`) | novo |
+|---|---|---|
+| 11/08 holdout — compras · descartes | 12/12 · 12/12 | 12/12 · 12/12 |
+| 12/08 — compras | 17/20 = 85,0% (1 carta errada) | 17/20 = 85,0% (**0 errada**) |
+| 12/08 — descartes | 14/19 = 73,7% (2 cartas erradas) | **16/19 = 84,2%** (**0 errada**) |
+| acumulado descartes | 26/31 = 83,9% | **28/31 = 90,3%** |
+| **cartas erradas** | **3** | **0** |
+| fantasmas | 5 | 11 |
+
+**O ganho é exatamente o que se foi buscar**: as três leituras erradas (`draw QS→AS`,
+`discard 5D→AS`, `discard QH→8S`) sumiram. O A♠ que nunca existiu na partida — o "erro que
+sobrevive a tudo isto" — não aparece mais. Classe correta no conjunto REAL do holdout, com
+`eval_classes.py ... training/datasets/real/20260811-211614`: 99,2% → **99,5%** (31 erros → 18).
+
+**O que PIOROU: fantasmas dobraram (5 → 11)**, e é o que fica aberto. Fantasma não baixa a nota (a
+conta é sobre jogadas que aconteceram) mas suja o overlay e alimenta o `_discard_history`. Repare
+que em `t=148,2s` o fantasma novo é um `discard KS` no mesmo ponto em que o modelo velho dava
+`carta_errada 5D→AS`: a carta agora é lida CERTA, mas some do leque por um instante — o que sobrou
+ali é instabilidade de PIPELINE, não erro de classe. Suspeita a investigar: nos frames reais só a
+MÃO é rotulada, então carta na mesa e monte entram como região visível **sem rótulo**, e este
+arquivo já ensina que isso treina o modelo a chamar aquele padrão de fundo.
+
+#### `--redetectar` NÃO é comparável com o número ao vivo
+
+Descoberto ao medir este retreino, e invalida qualquer comparação ingênua entre uma nota antiga e
+uma re-detectada. Em 12/08 as compras deram **100% ao vivo** e **85% re-detectadas do vídeo** — e
+deram 85% com os DOIS modelos, o velho inclusive. A perda não é do modelo: é do `mao.avi`, que é
+MJPG comprimido e não devolve o mesmo pixel que a câmera entregou ao pipeline.
+
+Consequência prática: `--redetectar` compara **modelo com modelo** (mesmo vídeo, mesmo pipeline) e
+para isso é ótimo. Não serve para dizer "o sistema está em X%" — esse número só sai ao vivo ou das
+detecções gravadas. Ao anotar uma medição, registre SEMPRE por qual caminho ela veio.
+
 ## Medir a partida: gravar, repetir, dar nota
 
 O que travava a meta de aceite não era a precisão — era o **custo de cada tentativa**. Testar uma
@@ -489,6 +700,7 @@ python scripts/revisar_partida.py gravacoes/<data>       # gabarito (evento a ev
 python scripts/replay.py gravacoes/<data> --gabarito     # a nota
 python scripts/replay.py gravacoes/<data> --varre lock_frames=20,30,45 --gabarito
 python scripts/replay.py gravacoes/<data> --redetectar models/cards_novo.pt
+python training/extrai_gravacao.py gravacoes/<data>       # vira DADO DE TREINO rotulado
 ```
 
 A gravação (`app/recorder.py`) guarda três coisas, cada uma habilitando um nível de experimento:
@@ -537,6 +749,29 @@ O casamento com o gabarito é por **subsequência comum máxima**, não posiçã
 terceira jogada desloca todas as seguintes, e uma comparação posicional marcaria a partida inteira
 como errada dali em diante — mediria o deslocamento, não o acerto. Nos buracos, uma jogada real e
 um evento do mesmo tipo lado a lado viram `carta_errada`; só o que sobra é perda ou fantasma.
+
+#### O erro de revisão que INFLA a nota: esquecer a tecla `p`
+
+Medido em 2026-08-12, e vale para **todo gabarito já revisado**. O revisor pede um veredito por
+EVENTO EMITIDO. Uma jogada que o sistema **não emitiu** não tem evento, logo não aparece na tela e
+só entra no gabarito se o revisor apertar `p` ("faltou jogada antes"). Esquecer o `p` não é um erro
+neutro: a jogada perdida some do **denominador**, e o acerto sobe.
+
+Aconteceu nas duas partidas revisadas, e a distorção foi grande:
+
+| partida | nota revisada | nota real |
+|---|---|---|
+| 2026-08-12 | descartes 100,0% (12/12) | **68,4%** (13/19) — 7 descartes faltavam |
+| 2026-08-11 | descartes 100,0% (11/11) | 91,7% (11/12) — 1 faltava |
+
+A verificação é **automática e não precisa do vídeo**: na cacheta o turno é compra→descarte, então
+**duas compras seguidas no GABARITO são impossíveis**. Cada par `CC` é uma jogada real que faltou
+marcar. É a mesma lógica da triagem por alternância da seção seguinte, só que aplicada ao gabarito
+em vez de aos eventos — e ali ela vira prova, não triagem, porque o gabarito deveria ser a verdade.
+
+Qual carta era também sai sem o vídeo: a mão exibida é gravada no `sessao.jsonl`, e na janela entre
+as duas compras sumiu exatamente uma carta. Nos 8 buracos das duas partidas, os 8 saíram sem
+ambiguidade. **Ao revisar uma partida nova, rode essa checagem antes de confiar na nota.**
 
 ### Triagem sem gabarito: a alternância
 
