@@ -69,8 +69,12 @@ def roda(registros: list[dict]) -> dict:
         antes = len(tracker.events)
         process_frame(detections_do_registro(rec, config.min_confidence),
                       tracker, hand_view, hand_lock, verbose=False)
-        if hand_lock.cards and (not maos or maos[-1]["cards"] != hand_lock.cards):
-            maos.append({"i": i, "ts": ts, "cards": list(hand_lock.cards)})
+        # registra toda mudança do que está NA TELA, inclusive de ORDEM e o
+        # esvaziamento — tem de bater exatamente com o que o `SessionRecorder`
+        # grava ao vivo, senão a checagem de fidelidade não vale nada
+        atual = list(hand_lock.cards)
+        if (atual if not maos else maos[-1]["cards"] != atual):
+            maos.append({"i": i, "ts": ts, "cards": atual})
         for ev in tracker.events[antes:]:
             eventos.append({"i": i, "ts": ts, "ev_id": ev.id, "tipo": ev.type,
                             "carta": ev.card.code, "fonte": ev.source})

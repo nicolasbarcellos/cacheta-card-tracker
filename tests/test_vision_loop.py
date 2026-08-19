@@ -31,54 +31,42 @@ def feed(n, cards, tracker, hv, lock):
         process_frame(cards, tracker, hv, lock)
 
 
-def test_full_turn_emits_draw_then_discard():
-    """Turno completo pela câmera da MÃO, sem a câmera do monte.
+def test_o_laco_nao_emite_mais_compra_nem_descarte():
+    """Escopo de 2026-08-19: este modelo LE A MAO, e so.
 
-    A mão cresce de 9 para 10 (compra) e volta a 9 (descarte). É a mudança do
-    leque que gera os dois eventos.
+    Compra e descarte viraram responsabilidade de outros modelos, com outras
+    cameras. `tracker.on_hand_changed` continua existindo e testado (ver
+    tests/test_tracker_*), mas o laco de visao nao o chama mais — mostrar aqui
+    um palpite que este modelo nao faz seria mentira na tela.
     """
     tracker = GameTracker()
     hv, lock = make_hand_view(), make_lock()
 
     feed(8, hand(*HAND9), tracker, hv, lock)
-    assert tracker.events == []          # primeira leitura é só a referência
-
-    feed(8, hand(*HAND9, "KC"), tracker, hv, lock)
-    assert [e.type for e in tracker.events] == ["draw"]
-    assert tracker.events[0].card.code == "KC"
-
-    # Descarta o 9D: a mão volta a 9 cartas. Leva mais frames que a compra —
-    # ao tirar uma carta do meio, as outras deslizam, e a vaga que era do 9D
-    # precisa acumular votos da carta que passou a ocupá-la.
-    resto = [c for c in HAND9 if c != "9D"] + ["KC"]
-    feed(30, hand(*resto), tracker, hv, lock)
-    assert [e.type for e in tracker.events] == ["draw", "discard"]
-    assert tracker.events[1].card.code == "9D"
+    feed(30, hand(*HAND9, "KC"), tracker, hv, lock)          # "compra"
+    feed(30, hand(*[c for c in HAND9 if c != "9D"], "KC"), tracker, hv, lock)
+    assert tracker.events == []
 
 
-def test_card_bought_from_the_discard_pile_is_marked():
-    """Ciclo real da cacheta: 9 -> 10 (compra) -> 9 (descarte) -> 10.
+def test_a_mao_exibida_acompanha_a_ordem_do_leque():
+    """A carta encaixada no MEIO tem de aparecer no meio.
 
-    A mão nunca passa por 8: compra-se ANTES de descartar. A exibição só
-    aceita mão plausível (0, 9 ou 10), então uma leitura de 8 seria bagunça
-    de transição e não uma jogada.
+    A ordem vinha congelada do instante da trava, e a carta ausente naquele
+    frame ia para o FIM da lista — onde ficava mesmo depois de reaparecer no
+    lugar certo. Medido numa partida real: 16,9% dos frames com a mao certa
+    tinham a ordem errada.
     """
     tracker = GameTracker()
     hv, lock = make_hand_view(), make_lock()
+    feed(15, hand(*HAND9), tracker, hv, lock)
 
-    feed(8, hand(*HAND9), tracker, hv, lock)
-    # compra o KC -> 10 cartas
-    feed(30, hand(*HAND9, "KC"), tracker, hv, lock)
-    # descarta o 9D -> volta a 9
-    nove = [c for c in HAND9 if c != "9D"] + ["KC"]
-    feed(30, hand(*nove), tracker, hv, lock)
-    # e compra o mesmo 9D de volta: veio do lixo
-    feed(30, hand(*nove, "9D"), tracker, hv, lock)
+    # KC entra entre a 3a e a 4a carta (x=250, entre 200 e 300)
+    com_kc = [det(c, x=i * 100) for i, c in enumerate(HAND9)]
+    com_kc.insert(3, det("KC", x=250))
+    feed(30, com_kc, tracker, hv, lock)
 
-    draws = [e for e in tracker.events if e.type == "draw"]
-    assert [d.card.code for d in draws] == ["KC", "9D"]
-    assert draws[0].source == "monte"
-    assert draws[1].source == "lixo"
+    codes = [c["code"] for c in tracker.state()["hand"]]
+    assert codes.index("KC") == 3, codes
 
 
 def test_hand_leaving_the_frame_is_not_nine_discards():

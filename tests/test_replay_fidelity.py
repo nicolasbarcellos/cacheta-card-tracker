@@ -6,6 +6,10 @@ override reproduz a partida ao pé da letra. Se um dia alguém acrescentar ao
 outra câmera, um contador global), o replay vai divergir e toda conclusão
 tirada dele passa a ser ficção — é aqui que isso aparece.
 
+O que se compara é a MÃO EXIBIDA, cartas e ordem. Era a sequência de eventos
+até 2026-08-19, quando compra e descarte saíram de escopo: a saída deste
+modelo passou a ser a mão, então é a mão que a fidelidade tem de garantir.
+
 Usa o pipeline montado pela CONFIG REAL (`build_pipeline`), não parâmetros de
 teste: o que se está afirmando é sobre a partida de verdade. Por isso os
 contadores de frames são generosos — `lock_frames=30` mais `fan_expire=24`
@@ -65,11 +69,16 @@ def test_replay_reproduz_a_partida_gravada(tmp_path):
     alimenta(descarte, ASSENTA)   # a vaga do 9D precisa expirar antes de sair
     rec.close()
 
-    ao_vivo = [(e.type, e.card.code) for e in tracker.events]
-    assert ao_vivo == [("draw", "KC"), ("discard", "9D")]
+    registros = carrega(rec.dir / "sessao.jsonl")
+    ao_vivo = [r["cards"] for r in registros if r["t"] == "mao"]
+    assert [sorted(m) for m in ao_vivo] == [
+        sorted(HAND9),
+        sorted(HAND9 + ["KC"]),
+        sorted([c for c in HAND9 if c != "9D"] + ["KC"]),
+    ]
 
-    res = roda(carrega(rec.dir / "sessao.jsonl"))
-    assert [(e["tipo"], e["carta"]) for e in res["eventos"]] == ao_vivo
+    res = roda(registros)
+    assert [m["cards"] for m in res["maos"]] == ao_vivo
     assert res["frames"] == 3 * ASSENTA
 
 
@@ -91,8 +100,8 @@ def test_gravacao_guarda_as_deteccoes_brutas(tmp_path):
     assert len(frames[0]["dets"]) == 2
 
 
-def test_gravacao_amarra_o_evento_ao_frame_que_o_gerou(tmp_path):
-    """Sem o índice do frame, a revisão não teria imagem para mostrar."""
+def test_gravacao_amarra_a_mao_ao_frame_que_a_gerou(tmp_path):
+    """Sem o índice do frame, não há como voltar à imagem do instante do erro."""
     rec = SessionRecorder(base_dir=tmp_path, gravar_video=False, config=config)
     tracker = GameTracker(hand_size=config.hand_size)
     hand_view, hand_lock = build_pipeline()
@@ -105,7 +114,7 @@ def test_gravacao_amarra_o_evento_ao_frame_que_o_gerou(tmp_path):
     rec.close()
 
     registros = carrega(rec.dir / "sessao.jsonl")
-    eventos = [r for r in registros if r["t"] == "evento"]
+    maos = [r for r in registros if r["t"] == "mao"]
     indices = {r["i"] for r in registros if r["t"] == "frame"}
-    assert eventos and eventos[0]["carta"] == "KC"
-    assert eventos[0]["i"] in indices
+    assert maos and "KC" in maos[-1]["cards"]
+    assert all(m["i"] in indices for m in maos)

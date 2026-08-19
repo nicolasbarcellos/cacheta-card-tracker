@@ -79,27 +79,23 @@ def process_frame(detections_hand, tracker, hand_view, hand_lock,
     exibida = hand_lock.cards
     cards = [Card.from_label(c) for c in exibida]
 
-    # A EXIBIÇÃO é atualizada todo frame, o EVENTO só quando a mão troca de
-    # conjunto. Os dois têm requisitos opostos: a ordem do leque precisa
-    # acompanhar o que se vê agora (o jogador encaixa a carta comprada no meio,
-    # e a tela tem de mostrar ali), enquanto o evento precisa da estabilidade
-    # do conjunto para não disparar em leitura tremida. `set_hand_display` não
-    # faz nada quando a lista é igual à anterior, então isto é barato.
-    antes_eventos = len(tracker.events)
+    # A saída deste modelo é UMA só: a mão do jogador na tela, atualizada todo
+    # frame. Compra e descarte deixaram de ser responsabilidade dele em
+    # 2026-08-19 (viram outros modelos, com outras câmeras), então
+    # `tracker.on_hand_changed` NÃO é mais chamado aqui — o método continua no
+    # tracker, testado, para quem for construir aquilo.
+    #
+    # `set_hand_display` não faz nada quando a lista é igual à anterior, então
+    # chamar a cada frame é barato — e é o que permite a ORDEM do leque
+    # acompanhar o que se vê agora, em vez de congelar no instante da trava.
     antes_exibida = list(tracker.hand_view)
     tracker.set_hand_display(cards)
-    if trocou:
-        tracker.on_hand_changed(cards)
-        if verbose:
-            log_lock(hand_view, hand_lock)
+    if trocou and verbose:
+        log_lock(hand_view, hand_lock)
     if recorder is not None:
-        # grava toda mudança do que está NA TELA, inclusive a de ordem: é o
-        # que o `revisar_partida.py` mostra, e o replay reproduz
+        # grava toda mudança do que está NA TELA, inclusive a de ordem
         if [c.code for c in tracker.hand_view] != [c.code for c in antes_exibida]:
             recorder.mao(i, list(exibida))
-        for ev in tracker.events[antes_eventos:]:
-            recorder.evento(i, {"ev_id": ev.id, "tipo": ev.type,
-                                "carta": ev.card.code, "fonte": ev.source})
 
 
 def vision_loop(cams, detector, tracker, annotated, running,

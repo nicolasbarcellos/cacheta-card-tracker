@@ -225,12 +225,11 @@ p95 8 px, espaçamento 47 px.) 50 px atende o caso típico — acima do jitter m
 espaçamento p05. Não existe valor que atenda os dois EXTREMOS; ver "Leque parado vale mais que
 qualquer parâmetro". Ao mexer nesses números, meça de novo com `dump_dets.py` e registre no commit.
 
-`confirm_confidence = 0.85` marcaria o evento como "confirmar?" no painel (amarelo), mas hoje é
-**letra morta**: `on_hand_changed` emite sempre com confiança 1.0, então nenhum evento sai
-pendente. Quem carregava a confiança era `on_stable_top_card`, do modelo de duas câmeras.
+`confirm_confidence = 0.85` é letra morta duas vezes: marcaria o EVENTO como "confirmar?" no
+painel, e evento saiu de escopo em 2026-08-19.
 
-`hand_cam_index = 1`, `discard_cam_index = 0` — trocá-los faz o leque ser consumido pelo pipeline
-de descarte (que só extrai a carta mais confiante) e a mão exibida nunca recebe nada.
+`hand_cam_index` é a webcam da mão — a única câmera do app. O índice não é fixo no Windows; se o
+preview mostrar outra coisa, `scripts/check_cams.py` mostra o que cada índice está vendo.
 
 ### `agnostic_nms` fica desligado — não religue
 
@@ -494,8 +493,8 @@ congela. Tirar a carta do quadro gerou ainda um descarte fantasma dela.
 
 Em 2026-08-04 a webcam USB externa (a da MÃO) saiu do índice 1 para o 0 sozinha, e o app passou a
 tratar a interna do notebook como mão. O Windows renumera ao desconectar/reconectar o USB ou
-reiniciar. Sintoma: o preview "Câmera da mão" do painel mostra a câmera errada; conserto: trocar
-`hand_cam_index` e `discard_cam_index` (ou conferir com `scripts/check_cams.py`).
+reiniciar. Sintoma: o preview "Câmera da mão" do painel mostra a câmera errada; conserto: ajustar
+`hand_cam_index` depois de rodar `scripts/check_cams.py`, que mostra o que cada índice está vendo.
 
 ## Modelo e treino (`training/`)
 
@@ -903,8 +902,14 @@ para diagnosticar aquela câmera.
   | `app/stability.py` (`StabilityFilter`) | `StableHand` | `tests/test_stability.py` |
   | `tracker.on_stable_top_card`, `tracker.on_stable_hand` | `tracker.on_hand_changed` | `scripts/demo_server.py`, testes |
   | `config.stable_frames`, `config.hand_absent_frames` | — | `tests/test_config.py` |
+  | `tracker.on_hand_changed`, `undo_last`, `correct_event`, `_discard_history` | — (compra/descarte saiu de escopo) | `tests/test_tracker_*`, `scripts/demo_server.py` |
+  | `app/scoring.py`, `scripts/revisar_partida.py`, `--gabarito` do replay | — (medem compra/descarte) | `tests/test_scoring.py` |
+  | `config.confirm_confidence`, `config.hand_size` | — | `tests/test_config.py`, `GameTracker` |
+  | `/api/undo`, `/api/correct` (servidor) | — (o painel não chama mais) | `tests/test_server.py` |
 
-  Os cinco últimos morreram junto com a segunda câmera em `f5fdf64`. `scripts/demo_server.py`
+  Os cinco primeiros morreram junto com a segunda câmera em `f5fdf64`. Os de baixo morreram em
+  2026-08-19, com a virada de escopo — e foram MANTIDOS de propósito: são história medida e o
+  material de partida de quem for construir os modelos de compra e descarte. `scripts/demo_server.py`
   (partida simulada) ainda fala a API velha e por isso continua funcionando — mas exercita um
   caminho que o app real não usa mais.
 - `assets/cards/` é git-ignored; sem rodar `scripts/download_assets.py` os overlays ficam com

@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<title>Painel — Cacheta Tracker</title>
+<title>Painel — Leitor de cartas</title>
 <style>
   body { margin: 0; background: #1a1a2e; color: #eee;
          font-family: Arial, sans-serif; }
@@ -19,12 +19,6 @@
   button:hover { background: #16498c; }
   button.perigo { background: #7a1f1f; }
   #pausar.ativo { background: #b8860b; }
-  .evento { display: flex; align-items: center; gap: 10px; padding: 8px;
-            background: #16213e; border-radius: 6px; margin-bottom: 6px; }
-  .evento.pendente { outline: 2px solid #e6b800; }  /* confiança baixa */
-  .evento img { width: 40px; }
-  .evento .info { flex: 1; font-size: 14px; }
-  .evento .tipo { font-size: 11px; color: #9aa; text-transform: uppercase; }
   dialog { background: #16213e; color: #eee; border: 1px solid #0f3460;
            border-radius: 8px; }
   select { font-size: 16px; padding: 6px; margin: 4px; }
@@ -32,13 +26,10 @@
   #mao-atual { display: flex; flex-wrap: wrap; gap: 6px; min-height: 140px;
                background: #16213e; border-radius: 6px; padding: 8px; }
   #mao-atual img { width: 96px; border-radius: 5px; }
-  .lista { min-height: 56px; }
-  .vazio-lista { font-size: 13px; color: #667; padding: 8px;
-                 background: #16213e; border-radius: 6px; }
 </style>
 </head>
 <body>
-<h1>Painel — Cacheta Tracker</h1>
+<h1>Painel — Leitor de cartas</h1>
 <div class="cols">
   <div class="cams">
     <!-- UMA câmera: a da mão. A do descarte saiu em 2026-08-19, quando o
@@ -50,20 +41,15 @@
     <div class="acoes">
       <button id="reler">🔄 Reler mão</button>
       <button id="pausar">Pausar detecção</button>
-      <button id="desfazer">Desfazer último</button>
-      <button id="novarodada" class="perigo">Nova rodada</button>
+      <button id="novarodada" class="perigo">Limpar</button>
     </div>
     <div class="rotulo">Mão do jogador (<span id="mao-count">0</span> cartas)</div>
     <div id="mao-atual"></div>
-    <div class="rotulo">Compra</div>
-    <div id="compras" class="lista"></div>
-    <div class="rotulo">Descarte</div>
-    <div id="descartes" class="lista"></div>
   </div>
 </div>
 
 <dialog id="corrigir">
-  <p>Corrigir carta do evento <span id="dlg-id"></span>:</p>
+  <p>Corrigir <span id="dlg-id"></span>:</p>
   <select id="dlg-rank"></select>
   <select id="dlg-suit">
     <option value="S">♠ espadas</option><option value="H">♥ copas</option>
@@ -85,7 +71,6 @@
     body: body ? JSON.stringify(body) : null,
   });
 
-  document.getElementById('desfazer').onclick = () => post('/api/undo');
   document.getElementById('reler').onclick = () => post('/api/relock');
   document.getElementById('novarodada').onclick = () => {
     if (confirm('Zerar a rodada?')) post('/api/new-round');
@@ -94,14 +79,9 @@
   btnPause.onclick = () => post('/api/pause', { paused: !paused });
 
   const dlg = document.getElementById('corrigir');
-  let alvo = null;  // {tipo:'evento',id} ou {tipo:'mao',index}
-  function abrirCorrecao(id) {
-    alvo = { tipo: 'evento', id };
-    document.getElementById('dlg-id').textContent = 'evento #' + id;
-    dlg.showModal();
-  }
+  let alvo = null;
   function abrirCorrecaoMao(index, code) {
-    alvo = { tipo: 'mao', index };
+    alvo = { index };
     document.getElementById('dlg-id').textContent = 'carta ' + code;
     document.getElementById('dlg-rank').value = code.slice(0, -1);
     document.getElementById('dlg-suit').value = code.slice(-1);
@@ -111,27 +91,13 @@
   document.getElementById('dlg-ok').onclick = () => {
     const card = document.getElementById('dlg-rank').value
                + document.getElementById('dlg-suit').value;
-    if (alvo.tipo === 'mao') post('/api/correct-hand', { index: alvo.index, card });
-    else post('/api/correct', { event_id: alvo.id, card });
+    post('/api/correct-hand', { index: alvo.index, card });
     dlg.close();
   };
 
-  function linhaEvento(e) {
-    const detalhe = e.type === 'draw'
-      ? (e.source === 'lixo' ? 'do lixo' : 'do monte')
-      : 'descartada';
-    return `
-      <div class="evento ${e.confirmed ? '' : 'pendente'}">
-        <img src="/assets/cards/${e.card.asset}" alt="">
-        <div class="info">
-          <div class="tipo">${detalhe}${e.confirmed ? '' : ' — confirmar?'}</div>
-          ${e.card.display}
-        </div>
-        <button onclick="abrirCorrecao(${e.id})">corrigir</button>
-      </div>`;
-  }
-
-  function renderEventos(state) {
+  // a única saída deste modelo é a MÃO: compra e descarte saíram do painel em
+  // 2026-08-19 junto com o escopo
+  function renderMao(state) {
     paused = state.paused;
     btnPause.textContent = paused ? 'Retomar detecção' : 'Pausar detecção';
     btnPause.classList.toggle('ativo', paused);
@@ -141,17 +107,6 @@
       `<img src="/assets/cards/${c.asset}" title="${c.display} (clique p/ corrigir)"
             style="cursor:pointer" onclick="abrirCorrecaoMao(${i}, '${c.code}')">`
       ).join('');
-
-    const eventos = state.events || [];
-    const porTipo = (tipo) => eventos.filter(e => e.type === tipo);
-    const render = (id, tipo, vazio) => {
-      const lista = porTipo(tipo);
-      document.getElementById(id).innerHTML = lista.length
-        ? lista.map(linhaEvento).join('')
-        : `<div class="vazio-lista">${vazio}</div>`;
-    };
-    render('compras', 'draw', 'nenhuma compra ainda');
-    render('descartes', 'discard', 'nenhum descarte ainda');
   }
 
   let reconectando = false;
@@ -169,7 +124,7 @@
     ws.onmessage = (msg) => {
       const state = JSON.parse(msg.data);
       if (state.type !== 'state') return;
-      renderEventos(state);
+      renderMao(state);
     };
     ws.onclose = () => { reconectando = true; setTimeout(connect, 1000); };
   }
