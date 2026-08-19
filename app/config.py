@@ -54,10 +54,16 @@ class Config:
     #
     # 50px atende o caso típico: acima do jitter médio (29.5) e abaixo do
     # espaçamento p05 (69). Não há valor que atenda os dois EXTREMOS — o jitter
-    # p95 (66px) praticamente empata com o menor espaçamento. O conserto real é
-    # compensar o movimento GLOBAL do leque antes de casar as vagas (a mão
-    # translada o leque inteiro junto, não cada carta em separado); enquanto
-    # isso não existir, apoiar a mão reduz muito o jitter.
+    # p95 (66px) praticamente empata com o menor espaçamento. O movimento GLOBAL
+    # do leque JÁ é compensado antes do casamento (`FanReader._estimate_shift`,
+    # desde a542f75); o que este raio ainda precisa cobrir é só o movimento
+    # RELATIVO entre cartas. Este comentário dizia que a compensação não existia
+    # até 2026-08-12.
+    #
+    # Varrido contra a partida de 2026-08-12 (19 descartes): 60px deu 78,9% de
+    # descartes contra 68,4% em 50px, com as compras em 100% nos dois. NÃO foi
+    # alterado: a diferença são DUAS jogadas numa amostra de 19, e afinar num
+    # único jogo é ajustar no conjunto que avalia. Refazer com mais partidas.
     # ATENÇÃO ao mexer nos contadores em FRAMES abaixo: eles são constantes de
     # TEMPO disfarçadas. Todos foram afinados contra ações físicas do jogador
     # (terminar de organizar o leque, a mão passar na frente, fechar o leque

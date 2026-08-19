@@ -221,13 +221,32 @@ def compose_fan(templates, bgs):
 
     # PASSO: é o deslocamento entre cartas que EXPÕE o índice. O índice tem
     # ~44px de largura no molde, ou seja ~0.18 da largura da carta — com passo
-    # menor que isso a carta seguinte cobre o índice da anterior e a imagem sai
-    # sem rótulo. Medido: com passo de 0.03-0.06, 60% dos índices ficavam
-    # cobertos e cada imagem rendia 3 rótulos em vez de 9.
+    # menor que isso a carta seguinte cobre o índice da anterior. Medido: com
+    # passo de 0.03-0.06, 60% dos índices ficavam cobertos e cada imagem rendia
+    # 3 rótulos em vez de 9.
     #
     # No leque ABERTO a rotação já afasta os topos, então o passo pode ser
     # menor; no FECHADO ele é o único mecanismo de exposição.
-    step = (random.uniform(0.20, 0.32) * (1 - 0.45 * frac_spread)
+    #
+    # LIMITE INFERIOR baixado de 0.20 para 0.12 em 2026-08-12, para aproximar a
+    # DISTRIBUIÇÃO gerada da real. A grandeza comparável é adimensional:
+    # distância entre índices vizinhos ÷ largura do índice (medida NOS RÓTULOS
+    # gerados e nas detecções gravadas, já deduplicadas):
+    #
+    #   sintético antes: mediana 0.92, p05 0.70
+    #   sintético agora: mediana 0.89, p05 0.67
+    #   partidas reais:  mediana 0.74-0.78, p05 0.50
+    #
+    # Repare no tamanho do efeito: mexer no passo quase NÃO move a distribuição,
+    # porque rotação e perspectiva pesam tanto quanto ele. O sintético continua
+    # ~15% mais frouxo que o real. Se algum dia isso precisar fechar de verdade,
+    # o parâmetro a atacar é a abertura/raio, não o passo — e meça nos rótulos,
+    # não no parâmetro. Ver CLAUDE.md, "Comparar o aperto do leque".
+    #
+    # A mudança só é segura junto com o recorte de índice parcialmente coberto
+    # em `parte_visivel`: sem ele, passo menor viraria rótulo DESCARTADO, que é
+    # o envenenamento que este arquivo já documenta.
+    step = (random.uniform(0.12, 0.32) * (1 - 0.45 * frac_spread)
             * TPL_W * scale)
 
     # INCLINAÇÃO do leque inteiro: a mão raramente segura na vertical exata.
@@ -273,21 +292,51 @@ def compose_fan(templates, bgs):
         np.array([[[0, 0], [TPL_W, 0], [TPL_W, TPL_H], [0, TPL_H]]], np.float32),
         mats[i])[0] for i in range(n)]
 
-    def visible(pts, drawn_after):
-        c = tuple(pts.mean(axis=0))
+    def parte_visivel(x1, y1, x2, y2, drawn_after):
+        """Caixa do PEDAÇO do índice que as cartas posteriores não cobrem.
+
+        Antes isto era um teste binário pelo CENTRO: centro coberto = rótulo
+        descartado. Isso é a mesma armadilha que o recorte de borda logo abaixo
+        existe para evitar — um índice PARCIALMENTE coberto continua visível na
+        imagem, e região visível sem rótulo ensina o modelo que aquele padrão é
+        fundo. E é o caso que mais importa: medido em 2026-08-12, no leque real
+        os índices vizinhos se sobrepõem ~28% na mediana, condição que o
+        gerador nunca produzia (ver CLAUDE.md, "O leque real é mais APERTADO").
+
+        Recorta numa máscara do tamanho da caixa, apaga os polígonos das cartas
+        desenhadas depois e devolve a caixa do que sobrou.
+        """
+        ix1, iy1 = int(np.floor(x1)), int(np.floor(y1))
+        ix2, iy2 = int(np.ceil(x2)), int(np.ceil(y2))
+        w, h = ix2 - ix1, iy2 - iy1
+        if w < 2 or h < 2:
+            return None
+        m = np.ones((h, w), np.uint8)
         for j in drawn_after:
-            if cv2.pointPolygonTest(polys[j].astype(np.float32), c, False) >= 0:
-                return False
-        return True
+            p = (polys[j] - np.array([ix1, iy1], np.float32))
+            cv2.fillPoly(m, [p.astype(np.int32)], 0)
+        ys, xs = np.nonzero(m)
+        if len(xs) == 0:
+            return None
+        # fração de ÁREA que sobrou: um filete de índice não identifica a carta
+        # nem para um humano, e rotulá-lo seria ensinar ruído. 0.40 cobre a
+        # faixa real (sobreposição mediana deixa ~73% visível) e exclui a cauda
+        # ilegível (no p05 medido sobra ~24%).
+        if len(xs) < 0.40 * w * h:
+            return None
+        return (ix1 + float(xs.min()), iy1 + float(ys.min()),
+                ix1 + float(xs.max()), iy1 + float(ys.max()))
 
     for i, code in enumerate(codes):
         # SÓ o canto de cima é carta. O canto de baixo (invertido) NUNCA é
         # rotulado -> o modelo aprende a ignorá-lo (não conta 2x a última).
         # A caixa vem medida do molde (detect_corner_tl), não é fixa.
         x1, y1, x2, y2, pts = bbox_of(templates[code][1], mats[i])
-        if not visible(pts, range(i + 1, n)):
+        vis = parte_visivel(x1, y1, x2, y2, range(i + 1, n))
+        if vis is None:
             DROP_STATS["coberto"] += 1
             continue
+        x1, y1, x2, y2 = vis
         # RECORTA na borda em vez de descartar. Descartar era pior que perder
         # a amostra: o índice continua VISÍVEL na imagem, e uma região visível
         # sem rótulo ensina o modelo que aquele padrão é fundo — exatamente o
@@ -336,7 +385,16 @@ def main():
         (OUT / "labels" / f"fan_{i:05d}.txt").write_text("\n".join(labels))
         if (i + 1) % 250 == 0:
             print(f"{i + 1}/{N_IMAGES}")
+    # O contador SÓ serve se for lido: três tentativas de deduzir por que a
+    # detecção colapsava olhando as imagens falharam, e ele resolveu na
+    # primeira. Se "coberto" dominar, as cartas estão empilhadas demais e o
+    # modelo vai aprender com 3 índices em vez de 9.
+    total = sum(DROP_STATS.values())
     print(f"pronto: {OUT}")
+    print(f"{total} índices desenhados, "
+          f"{DROP_STATS['rotulado'] / max(N_IMAGES, 1):.2f} rótulos por imagem")
+    for motivo, n in DROP_STATS.most_common():
+        print(f"  {motivo:16s} {n:7d}  {100 * n / max(total, 1):5.1f}%")
 
 
 if __name__ == "__main__":
