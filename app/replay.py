@@ -18,6 +18,41 @@ from app.main import build_pipeline, process_frame
 from app.tracker import GameTracker
 
 
+def aplica_overrides(pares: list[str]) -> dict:
+    """`--set nome=valor`, com o tipo vindo do valor atual da config.
+
+    Mora aqui, e não no `scripts/replay.py` onde nasceu, porque desde
+    2026-08-20 há DOIS instrumentos que varrem parâmetros contra uma gravação
+    (a nota de compra/descarte e a nota de leitura da mão). Duas cópias desta
+    conversão divergiriam em silêncio, e o sintoma seria o pior possível: duas
+    medições do mesmo parâmetro discordando sem motivo aparente.
+
+    `merge_factor` é caso especial: mora em `detector.MERGE_FACTOR`, não na
+    config. Deixá-lo de fora só porque está em outro módulo esconderia um dos
+    experimentos mais baratos — foi o parâmetro do bug mais caro do projeto.
+    """
+    from app import detector as detector_mod
+
+    aplicados = {}
+    for par in pares:
+        nome, _, valor = par.partition("=")
+        nome = nome.strip()
+        if nome == "merge_factor":
+            detector_mod.MERGE_FACTOR = float(valor)
+            aplicados[nome] = float(valor)
+            continue
+        if not hasattr(config, nome):
+            raise SystemExit(f"config não tem '{nome}'")
+        atual = getattr(config, nome)
+        if isinstance(atual, bool):
+            convertido = valor.lower() in ("1", "true", "sim")
+        else:
+            convertido = type(atual)(valor)
+        setattr(config, nome, convertido)
+        aplicados[nome] = convertido
+    return aplicados
+
+
 def carrega(caminho: Path) -> list[dict]:
     registros = []
     with open(caminho, encoding="utf-8") as f:

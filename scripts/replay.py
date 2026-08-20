@@ -35,37 +35,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app import detector as detector_mod      # noqa: E402
 from app.config import config                 # noqa: E402
-from app.replay import carrega, consistencia, roda   # noqa: E402
+from app.replay import (aplica_overrides, carrega,      # noqa: E402
+                        consistencia, roda)
 from app.scoring import imprime, nota         # noqa: E402
-
-
-def aplica_overrides(pares: list[str]) -> dict:
-    """`--set nome=valor`, com o tipo vindo do valor atual da config.
-
-    `merge_factor` é caso especial: mora em `detector.MERGE_FACTOR`, não na
-    config. Deixá-lo de fora só porque está em outro módulo esconderia um dos
-    experimentos mais baratos — foi o parâmetro do bug mais caro do projeto.
-    """
-    aplicados = {}
-    for par in pares:
-        nome, _, valor = par.partition("=")
-        nome = nome.strip()
-        if nome == "merge_factor":
-            detector_mod.MERGE_FACTOR = float(valor)
-            aplicados[nome] = float(valor)
-            continue
-        if not hasattr(config, nome):
-            raise SystemExit(f"config não tem '{nome}'")
-        atual = getattr(config, nome)
-        if isinstance(atual, bool):
-            convertido = valor.lower() in ("1", "true", "sim")
-        else:
-            convertido = type(atual)(valor)
-        setattr(config, nome, convertido)
-        aplicados[nome] = convertido
-    return aplicados
 
 
 def diferencas_de_config(gravacao: Path, aplicados: dict) -> dict:

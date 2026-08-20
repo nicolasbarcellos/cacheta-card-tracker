@@ -75,6 +75,15 @@ class FanReader:
         self._displayed: list[str] = []
         self._empty = 0                 # frames seguidos sem NENHUMA detecção
         self._occluded = 0              # frames seguidos de leque fechado
+        # O que o leitor considerou LEQUE no último frame (depois de
+        # `_so_o_leque`). Não é usado pela leitura — existe para a MEDIÇÃO.
+        # A contradição pergunta "esta carta está visível e não está na tela?",
+        # e a carta segurada à parte está visível de propósito fora da tela:
+        # cobrá-la é medir o comportamento pedido como se fosse defeito. Medido
+        # na partida de 19/08, a diferença entre cobrar e não cobrar era de
+        # 7,5% para 9,2%. Publicar aqui evita a alternativa, que seria a
+        # medição reimplementar o agrupamento e divergir do leitor sem aviso.
+        self.ultimo_leque: list = []
 
     def _cortada(self, box) -> bool:
         """A caixa encosta na borda do quadro, então o índice está amputado.
@@ -214,6 +223,7 @@ class FanReader:
         anterior congelada para sempre.
         """
         if not detections:
+            self.ultimo_leque = []
             self._empty += 1
             if self._empty < self.expire or not (self._slots or self._displayed):
                 return False
@@ -233,6 +243,10 @@ class FanReader:
         # tinha acertado e podia estabelecer rótulo errado do zero. Congelando,
         # os votos acumulados sobrevivem e a leitura certa volta na hora.
         if self._displayed and len(detections) < len(self._displayed) - 1:
+            # o leque não foi agrupado neste frame (o leitor congelou antes
+            # disso), mas o pouco que se vê É carta da mão: para a medição,
+            # conta como leque — senão a oclusão viraria um buraco na conta
+            self.ultimo_leque = list(detections)
             self._occluded += 1
             return False
 
@@ -266,6 +280,7 @@ class FanReader:
         # disparava o congelamento e a tela travava. Medido: a contradição ia
         # de 7,5% para 76% e a mão exibida mudava 4 vezes numa partida inteira.
         detections = self._so_o_leque(detections)
+        self.ultimo_leque = list(detections)
 
         centers = [((d.box[0] + d.box[2]) / 2, (d.box[1] + d.box[3]) / 2)
                    for d in detections]
@@ -519,3 +534,4 @@ class FanReader:
         self._displayed = []
         self._empty = 0
         self._occluded = 0
+        self.ultimo_leque = []

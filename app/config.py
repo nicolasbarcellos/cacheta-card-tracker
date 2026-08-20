@@ -162,6 +162,26 @@ class Config:
     #
     # Ou seja: esperar mais não estava comprando acerto nenhum, só atraso —
     # e abaixo de 20 a tela começa a tremer (24 trocas para ~12 jogadas).
+    #
+    # RE-VARRIDO em 2026-08-20 com o instrumento já no repositório
+    # (`scripts/mede_leitura.py --varre lock_frames=...`), agora nas DUAS
+    # partidas de 19/08 e com a contradição cobrando só carta do leque:
+    #
+    #   frames   atraso 16:22 / 15:50   contradição 16:22 / 15:50   trocas
+    #      10        0,43s / 0,41s          7,1% / 13,2%            19 / 47
+    #      20        0,88s / 0,83s          7,3% / 13,8%            17 / 45
+    #      30        1,32s / 1,22s          8,4% / 15,0%            17 / 43
+    #      45        1,99s /   —           10,1% /   —              17 / —
+    #      60        2,65s /   —           11,8% /   —              16 / —
+    #
+    # O tremor que motivou o piso de 20 NÃO reapareceu: 10 custa +2 trocas nas
+    # duas partidas (~+5%), não o salto de 18 para 24 medido em 19/08 — aquele
+    # número veio de outra gravação, que não está mais no disco. Com 10 o
+    # atraso CAI PELA METADE e a contradição fica igual ou melhor.
+    # NÃO foi alterado: 20 é o valor que o usuário validou ao vivo ("agora tá
+    # top dms"), e "trocas" não distingue tremor de troca legítima sem saber
+    # quantas jogadas a partida teve. Trocar isto é decisão de SENSAÇÃO, não de
+    # número — precisa de olho no overlay, não de mais replay.
     lock_frames: int = 20
     hand_size: int = 9
     server_host: str = "127.0.0.1"

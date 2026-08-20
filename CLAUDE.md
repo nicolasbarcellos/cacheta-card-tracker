@@ -23,6 +23,11 @@ Três consequências que invalidam parte grande do que está escrito abaixo:
    - *contradição* — % de frames em que uma carta lida com confiança ≥ 0,80 não está na tela;
    - *trocas* — quantas vezes a mão exibida mudou (acima do número de jogadas = tremor).
 
+   O instrumento é `scripts/mede_leitura.py` (núcleo em `app/leitura.py`, testado). Ele é o
+   irmão do `scripts/replay.py`: aquele dá a nota de compra/descarte e precisa de gabarito
+   revisado à mão; este dá a nota da TELA e não precisa de gabarito nenhum, porque a verdade de
+   referência é o próprio quadro. Roda em qualquer gravação, inclusive nas que ninguém revisou.
+
 Medido na partida de 19/08 (5 min, 27 fps), antes e depois desta virada:
 
 | | antes | agora |
@@ -34,6 +39,42 @@ Medido na partida de 19/08 (5 min, 27 fps), antes e depois desta virada:
 O que veio de graça: **o atraso era quase todo seguro para o EVENTO**. Um evento errado fica no
 histórico para sempre, uma mão exibida errada se corrige no frame seguinte — por isso o
 `lock_frames` podia cair de 60 para 20 sem custar acerto (a varredura está no `config.py`).
+
+### O que a métrica diz hoje, e o número que ninguém tinha medido (2026-08-20)
+
+As duas partidas gravadas em 19/08 (12,8 min e 23,0 min, ~29 fps), medidas pelo `mede_leitura.py`
+com a config atual — as detecções são gravadas brutas, então valem para o `lock_frames=20` de
+hoje mesmo tendo sido gravadas com 60:
+
+| | 19/08 16:22 | 19/08 15:50 |
+|---|---|---|
+| atraso até a tela (mediana) | 0,88 s | 0,83 s |
+| contradição | 7,3% | 13,8% |
+| ordem errada | 0,7% | 0,2% |
+| trocas da mão exibida | 17 | 45 |
+| **cobertura — mão na tela** | **16,6%** | **19,4%** |
+
+**A cobertura é o número novo, e é o pior do projeto.** O leque passa ~82% do tempo fora do
+quadro: nessas partidas o leitor não tinha o que ler em 4 de cada 5 frames. Nenhum parâmetro
+conserta isso e os outros três números não denunciam — eles só olham os frames em que há mão na
+tela. Por isso a cobertura entrou na saída padrão do instrumento.
+
+A contradição quase dobra entre as duas partidas (7,3% × 13,8%) e é concentrada em poucas cartas
+(na de 23 min, `10S` e `3S` respondem por metade). 97% das ocorrências são de cartas que *foram*
+da mão em algum momento — ou seja, é atraso e transição, não carta estranha.
+
+Duas decisões de medição que mudam o resultado e não são óbvias (as duas estão em `app/leitura.py`,
+com teste):
+
+- **A contradição só cobra carta que está NO LEQUE.** A carta segurada à parte fica visível de
+  propósito fora da tela desde 19/08; cobrá-la é medir a feature como defeito — vale 9,2% contra
+  7,3% na mesma partida. Quem diz o que é leque é o leitor (`FanReader.ultimo_leque`), não uma
+  cópia da regra dentro da métrica: cópia diverge em silêncio.
+- **O atraso conta a partir da PRIMEIRA vez que a leitura viva mostrou aquele conjunto**, não da
+  última vez que ela mudou. A leitura viva pisca (vai a B e volta a A); medindo da última mudança,
+  se a tela já mostrava A o atraso saía 0,00 s e entrava na conta. Eram 4 zeros em 20 medidas na
+  partida de 16:22, e a correção mexeu na mediana só de 0,86 s para 0,88 s — o defeito era pequeno
+  em efeito, mas fabricava medidas que não correspondiam a espera nenhuma.
 
 **O código de compra/descarte continua no repositório** (`tracker.on_hand_changed`, `app/scoring.py`,
 `scripts/revisar_partida.py`, o gabarito das gravações). Não foi apagado de propósito: é história
@@ -53,6 +94,8 @@ python scripts/download_assets.py     # PNGs das 52 cartas em assets/cards/ (git
 python -m app.main                    # app real (precisa da webcam da mão livre)
 python -m app.main --gravar           # idem, gravando a partida para medir depois
 python scripts/demo_server.py         # partida simulada, sem webcam — para mexer no overlay/painel
+
+python scripts/mede_leitura.py gravacoes/<data>   # a NOTA: atraso, contradição, trocas
 
 python -m pytest                      # suíte completa (rápida: só código puro)
 python -m pytest tests/test_hand_reader.py::test_carta_duplicada_e_FRACA_nao_entra_na_mao
@@ -806,6 +849,12 @@ minuto 12 deixava como único rastro o `print` do `log_lock`, que some com o ter
 
 ```powershell
 python -m app.main --gravar                              # joga gravando
+
+# a nota DE HOJE (a mão na tela) — não precisa de gabarito
+python scripts/mede_leitura.py gravacoes/<data>
+python scripts/mede_leitura.py gravacoes/<data> --varre lock_frames=10,20,30
+
+# a nota ANTIGA (compra/descarte), que precisa de gabarito revisado à mão
 python scripts/revisar_partida.py gravacoes/<data>       # gabarito (evento a evento)
 python scripts/replay.py gravacoes/<data> --gabarito     # a nota
 python scripts/replay.py gravacoes/<data> --varre lock_frames=20,30,45 --gabarito
