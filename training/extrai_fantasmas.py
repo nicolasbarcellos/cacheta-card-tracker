@@ -28,6 +28,29 @@ fantasma fica sem rótulo, que é o que ensina o modelo a ignorá-la.
     python training/extrai_fantasmas.py gravacoes/20260820-174248
     python training/extrai_fantasmas.py gravacoes/... --ate 110 --max 150
 
+STATUS EM 2026-08-20: **a extração foi REPROVADA na auditoria, duas vezes, e
+nada dela entrou em treino.** O script fica porque o diagnóstico é útil e o
+conserto é identificável — mas não use a saída dele sem resolver o problema
+abaixo.
+
+O que a auditoria mostrou, olhando as folhas de contato:
+
+1. Com o limiar do app (0,30), as intrusas são sobretudo leituras FRACAS
+   (0,27-0,46) em cima do próprio leque. Daí o `--conf-fantasma`.
+2. Com 0,80, as intrusas ficam fortes (0,83-0,94) — mas a MAIORIA continua no
+   meio do leque (`7D 0,93`, `KD 0,93`, `3D 0,92`), não no canto invertido.
+
+E aí está o furo do método: uma detecção que sobra pode ser duas coisas
+opostas — o canto invertido (que é fundo de verdade) ou **a leitura ERRADA de
+uma carta real** cujo índice está exatamente ali. Deixar a segunda sem rótulo
+ensina que índice legítimo é fundo, que é o envenenamento que este projeto já
+documenta. Confiança não separa as duas.
+
+O que separaria é GEOMETRIA: o canto invertido fica fora da fileira de índices
+do leque (é o outro canto de uma carta que já tem índice rotulado), enquanto a
+leitura errada cai em cima da fileira. Implementar isso — e auditar de novo — é
+o que falta.
+
 RISCO QUE PRECISA SER MEDIDO DEPOIS, e não é pequeno: o canto invertido de um 9
 tem os MESMOS PIXELS do índice de um 6 de verdade. Ensinar "isto é fundo" pode
 custar detecção de 6 legítimo. O que separa os dois é o contexto (o pip fica
@@ -69,6 +92,13 @@ def main():
     ap.add_argument("--ate", type=float, default=1e9,
                     help="segundo final — deixe o resto FORA para medir depois")
     ap.add_argument("--max", type=int, default=150)
+    ap.add_argument("--conf-fantasma", type=float, default=0.80,
+                    dest="conf_fantasma",
+                    help="confianca minima da INTRUSA. Auditada em 2026-08-20: "
+                         "com o limiar do app (0,30) entram sobretudo leituras "
+                         "fracas (0,27-0,46) EM CIMA de cartas de verdade, e "
+                         "deixa-las sem rotulo ensina que indice legitimo e "
+                         "fundo. O canto invertido, que e o alvo, sai a 0,93")
     ap.add_argument("--falta-max", type=int, default=2, dest="falta_max",
                     help="quantas cartas da mao podem faltar no frame")
     ap.add_argument("--passo", type=int, default=12,
@@ -92,7 +122,9 @@ def main():
         exibida = trava.cards
         if len(exibida) < MIN_MAO:
             continue
-        dets = hand_instances(dets_brutas)
+        dets = [d for d in hand_instances(dets_brutas)
+                if d.confidence >= args.conf_fantasma
+                or d.card.code in exibida]
         vistos = Counter(d.card.code for d in dets)
         na_mao = Counter(exibida)
         sobra = vistos - na_mao
