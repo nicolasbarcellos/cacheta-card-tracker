@@ -769,6 +769,45 @@ sabia produzir fundo escuro.
 real não se diluir; negativo repetido só ensina o modelo a ter medo) e avisa acima de ~10% do
 treino, porque passar disso troca fantasma por carta perdida — e essa troca não aparece no mAP.
 
+### O conjunto de validação real era CEGO a 5 dos 13 valores (2026-08-20)
+
+Descoberto ao perguntar "onde o modelo ainda erra?". O conjunto real de holdout
+(`datasets/real/20260811-211614`) sai de uma partida gravada — e uma partida só tem as cartas que
+foram jogadas. Ranks presentes: **7, 5, 6, J, 3, Q, K, 10**. Ausentes: **A, 2, 4, 8 e 9** — que
+incluem justamente o A e o 4 (o par de confusão mais antigo do projeto) e o 8 (o pior rank já
+medido). Não havia como saber se o modelo lia bem essas cartas.
+
+`training/datasets/holdout-ranks/` fecha esse buraco: 133 frames, 1.330 índices, A/2/4/8/9 nos
+quatro naipes, capturados com `capture_rotulado.py` (rótulo pela ORDEM, não pelo palpite do
+modelo). São dois leques de 10 cartas, cada um gravado em DUAS ordens — a primeira vai para o
+treino, a segunda vira validação. Custo: ~10 min do usuário, uma vez.
+
+**E ele achou na primeira medição o que o conjunto antigo não via:**
+
+| | conjunto antigo (11/08) | conjunto novo |
+|---|---|---|
+| classe correta | 99,3% | **97,0%** |
+| troca de naipe na MESMA COR | **0,0%** | **2,3%** |
+
+As confusões dominantes são `4S→4C` (11×), `9S→9C` (9×), `8H→8D` (4×) — ♠ lido como ♣. A confusão
+de naipe da mesma cor, que o projeto tratava como resolvida desde o retreino de 29/07, **nunca
+tinha sido medida nestas cartas**.
+
+Retreino com os 142 frames novos (12 épocas, 2.930 imagens, 37% real): classe correta **97,0% →
+98,0%**, naipe na mesma cor **2,3% → 1,2%**, `4S→4C` de 11 para 4, `8H→8D` de 4 para 1, `9H→9D` de
+3 para 0. Sem regressão: 11/08 foi de 99,3% para 99,4%, detecção seguiu em 100% e as cartas
+inventadas seguiram em 0.
+
+**Duas ressalvas que valem mais que o ganho:**
+
+- **O holdout é das MESMAS cartas físicas, na mesma sessão e na mesma luz** — só a arrumação do
+  leque muda. Parte do ganho é reconhecer *aquele* 4♠ naquela iluminação, não "quatro de espadas"
+  em geral. Para medir de verdade falta capturar noutro dia, noutra luz, com outro baralho.
+- **`9S→9C` não se mexeu**: 9 erros antes, 9 depois, enquanto os vizinhos caíram pela metade ou
+  zeraram. Erro que não responde a dado novo tem outra causa — provavelmente o pip daquele molde
+  ou daquela carta física. É o próximo alvo, e a investigação começa comparando os recortes do 9♠
+  e do 9♣ que o modelo vê.
+
 ### Hipótese refutada: nitidez do frame não separa acerto de erro
 
 O erro A↔4 aparecia mais com a câmera balançando, o que sugeria filtrar frames borrados
