@@ -10,6 +10,10 @@ Consome três fontes e mistura todas:
 - training/datasets/real/<partida>/ — frames REAIS de uma partida GRAVADA,
   rotulados pelo gabarito revisado (`extrai_gravacao.py`). Custam zero tempo
   de jogo, e é a única fonte que traz a condição em que o modelo erra ao vivo.
+- training/datasets/negativos/<partida>/ — frames SEM carta nenhuma, de rótulo
+  vazio (`extrai_negativos.py`). Ensinam o que NÃO é carta: o modelo lia o logo
+  da parede da sala como `10C`/`QC` e textura de reboco como `5S 4D KS`, e
+  desde 19/08 essas cartas inventadas chegavam à tela.
 
 Uma partida pode ser DEIXADA DE FORA com `--holdout <nome>`: sem isso, medir o
 modelo com `replay.py` contra a mesma partida que o treinou é medir decoreba.
@@ -36,6 +40,7 @@ ROOT = Path(__file__).resolve().parent
 SYNTH = ROOT / "datasets" / "synthetic"
 LOCAL = ROOT / "datasets" / "local"
 GRAVADAS = ROOT / "datasets" / "real"
+NEGATIVOS = ROOT / "datasets" / "negativos"
 TRAINSET = ROOT / "datasets" / "fans-split"
 MODEL = Path("models/cards.pt")
 
@@ -104,8 +109,24 @@ def main():
         print("AVISO: nenhum frame real. O modelo vai treinar só em simulação, "
               "que é o que costuma falhar no setup de verdade.")
 
+    # NEGATIVOS: imagem sem carta nenhuma, rótulo vazio. Entram numa lista
+    # própria e NÃO são repetidos como o dado real — a repetição existe para o
+    # real não se diluir, e negativo repetido só ensina o modelo a ter medo.
+    # A literatura do YOLO recomenda algo entre 0 e 10% de "background images";
+    # o aviso abaixo existe porque passar disso troca fantasma por carta
+    # perdida, e essa troca não aparece no mAP.
+    negativos = []
+    for pasta in sorted(p for p in NEGATIVOS.glob("*") if p.is_dir()):
+        if pasta.name in args.holdout:
+            print(f"negativos: {pasta.name} FORA do treino (holdout)")
+            continue
+        destes = collect(pasta, needs_review=True)
+        negativos += destes
+        print(f"negativos: {len(destes)} imagens sem carta ({pasta.name})")
+
     syn_train, syn_val = split_pairs(synthetic, seed=42)
     real_train, real_val = split_pairs(real, seed=43)
+    neg_train, neg_val = split_pairs(negativos, seed=44)
 
     # repete o real até ele pesar REAL_TARGET_SHARE do treino
     repeat = 1
@@ -116,8 +137,12 @@ def main():
             print(f"repetindo os {len(real_train)} frames reais {repeat}x "
                   f"para não diluí-los em {len(syn_train)} sintéticos")
 
-    splits = {"train": syn_train + real_train * repeat,
-              "val": syn_val + real_val}
+    splits = {"train": syn_train + real_train * repeat + neg_train,
+              "val": syn_val + real_val + neg_val}
+    if neg_train:
+        fatia = 100 * len(neg_train) / len(splits["train"])
+        print(f"negativos: {len(neg_train)} no treino = {fatia:.1f}% "
+              f"(acima de ~10% o modelo passa a PERDER carta de verdade)")
 
     if TRAINSET.exists():
         shutil.rmtree(TRAINSET)

@@ -149,13 +149,49 @@ def load_backgrounds():
 
 
 def random_background(bgs):
-    if bgs and random.random() < 0.85:
+    """Fundo da cena — e ele importa muito mais do que parecia.
+
+    Medido em 2026-08-20: os 12 fundos reais em `backgrounds/` são TODOS a
+    mesma superfície de perto (brilho médio 117 em todos os 12). Ou seja, o
+    treino sintético inteiro viu praticamente UM fundo. É a explicação
+    estrutural de o modelo ler o logo *"10COC LEAGUE"* da parede da sala como
+    `10C`/`QC` e textura de reboco como `5S 4D KS` — cenário com quinquilharia
+    nunca apareceu no treino, e o que nunca apareceu não tem como ser aprendido
+    como fundo.
+
+    Duas mudanças, e as duas vêm do setup REAL descrito pelo usuário:
+
+    1. Frames de sala vazia das gravações entraram em `backgrounds/`
+       (`bg_sala_*.jpg`), o logo e o quadro-negro incluídos. Agora o leque é
+       composto POR CIMA deles, e o modelo vê o distrator e a carta na mesma
+       imagem — que é mais forte do que só ver o distrator sozinho num
+       negativo.
+    2. A cor chapada de reserva vai até 235, não mais até 110. "Na maior parte
+       das vezes eu coloco a câmera virada para uma parede branca e lisa" — e o
+       fundo chapado CLARO era exatamente o que faltava: carta branca sobre
+       parede branca é o caso de menor contraste que existe, e o gerador só
+       sabia produzir fundo escuro. O gradiente evita a chapa perfeita, que não
+       existe em parede iluminada de verdade.
+    """
+    if bgs and random.random() < 0.70:
         bg = random.choice(bgs).astype(np.float32)
         bg *= random.uniform(0.6, 1.15)
         bg += np.random.uniform(-10, 10, 3)
         return np.clip(bg, 0, 255).astype(np.uint8)
+    # NEUTRO com leve dominante, não cor aleatória por canal: sorteando os três
+    # canais soltos saem paredes ciano e magenta, que não existem na sala do
+    # usuário. O que existe é parede branca, bege e cinza — um NÍVEL, com um
+    # desvio pequeno de tom.
+    nivel = random.randint(20, 235)
     base = np.full((CANVAS_H, CANVAS_W, 3),
-                   [random.randint(20, 110) for _ in range(3)], np.uint8)
+                   [np.clip(nivel + random.randint(-12, 12), 0, 255)
+                    for _ in range(3)], np.float32)
+    # queda de luz de um lado para o outro: parede lisa tem gradiente, não chapa
+    g = np.linspace(random.uniform(0.80, 1.0), random.uniform(1.0, 1.20),
+                    CANVAS_W, dtype=np.float32).reshape(1, -1, 1)
+    if random.random() < 0.5:
+        g = g[:, ::-1, :]            # a luz pode vir de qualquer um dos lados
+    base = base * g
     noisy = np.clip(base + np.random.normal(0, 8, base.shape), 0, 255)
     return noisy.astype(np.uint8)
 
