@@ -158,16 +158,19 @@ def test_ordem_certa_nao_conta_como_erro():
     assert res["ordem"]["errada"] == 0
 
 
-def test_cobertura_mostra_a_mao_fora_do_quadro():
-    """O número que explicou as duas partidas de 19/08.
+def test_cobertura_nao_cobra_o_tempo_sem_ninguem_na_frente_da_camera():
+    """O denominador da cobertura é o que a torna útil ou enganosa.
 
-    Nelas a mão estava na tela em só 16,5% e 19,4% dos frames — o leque passa a
-    maior parte do tempo fora do enquadramento. Sem este número, os outros três
-    parecem bons e a partida inteira parece medida.
+    Metade desta gravação sintética não tem carta nenhuma no quadro — como as
+    partidas reais de 19/08, em que o app ficou ligado sozinho por vários
+    minutos. Cobrar isso do leitor daria 50% de cobertura e faria parecer que o
+    leque vive fora do enquadramento; contando só os frames COM carta, a
+    cobertura é alta e a ausência aparece na ATIVIDADE, onde ela pertence.
     """
     mao = leque(["AS", "2S", "3S", "4H", "5H"])
     registros = partida([([], ASSENTA), (mao, ASSENTA)])   # sem mão, depois com
 
     res = mede(registros)
-    assert 0.0 < res["cobertura"] < 0.6
     assert res["frames"] == 2 * ASSENTA
+    assert res["atividade"] < 0.55            # metade da gravação é vazia
+    assert res["cobertura"] > 0.6             # mas quando há carta, há tela

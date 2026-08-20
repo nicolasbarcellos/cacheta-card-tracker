@@ -12,12 +12,19 @@ métrica nova, e ele mede três coisas contra uma partida gravada:
 - **trocas** — quantas vezes a mão exibida mudou. Acima do número de jogadas da
   partida, o excesso é tremor.
 
-E mais dois números que não são a nota mas explicam quase todo o resto:
+E mais três números que não são a nota mas explicam quase todo o resto:
 
-- **cobertura** — em que fração dos frames havia mão na tela. Medido nas duas
-  partidas de 19/08: 16,5% e 19,4%, ou seja o leque passa ~80% do tempo fora do
-  quadro. Nenhum parâmetro conserta isso, e sem o número a conversa vira
-  opinião sobre postura;
+- **cobertura** — DOS FRAMES EM QUE O MODELO VIU ALGUMA CARTA, em quantos havia
+  mão na tela. O denominador é a ressalva inteira, e é a diferença entre um
+  número útil e um número enganoso: medida sobre TODOS os frames, a cobertura
+  das duas partidas de 19/08 dá 16,6% e 19,4%, e parece dizer que o leque passa
+  82% do tempo fora do quadro. Não passa — a gravação é que ficou rodando com
+  ninguém na frente da câmera (numa delas a partida inteira cabe nos 3 primeiros
+  minutos de 12,8). Contei essa leitura errada como achado neste arquivo antes
+  de olhar a linha do tempo;
+- **atividade** — que fração da gravação teve carta na frente da câmera. É o
+  denominador acima, publicado à parte justamente para não se confundir de novo
+  com defeito do leitor;
 - **ordem** — % dos frames em que a tela tem as cartas certas na ordem errada.
 
 Estas contas viviam em dois scripts soltos no diretório temporário de uma
@@ -79,7 +86,7 @@ def mede(registros: list[dict], conf_alta: float = 0.80,
     tracker = GameTracker(hand_size=config.hand_size)
     leitor, trava = build_pipeline()
 
-    frames = com_imagem = com_mao = 0
+    frames = com_imagem = com_mao = com_carta = com_carta_e_mao = 0
     duracao = 0.0
     atrasos: list[float] = []
     trocas = 0
@@ -107,6 +114,8 @@ def mede(registros: list[dict], conf_alta: float = 0.80,
         duracao = max(duracao, ts)
 
         dets = detections_do_registro(rec, config.min_confidence)
+        if dets:
+            com_carta += 1
         process_frame(dets, tracker, leitor, trava, verbose=False)
         leque = leitor.ultimo_leque
 
@@ -134,6 +143,11 @@ def mede(registros: list[dict], conf_alta: float = 0.80,
         if not exibida:
             continue
         com_mao += 1
+        # numerador da cobertura: os dois ao mesmo tempo. Sem exigir a carta no
+        # quadro, o rastro que a tela mantém depois de as cartas saírem (a mão
+        # só some depois de `fan_expire`) fazia a cobertura passar de 100%
+        if dets:
+            com_carta_e_mao += 1
 
         # ORDEM: só faz sentido comparar quando a tela tem as MESMAS cartas do
         # quadro. Quando as cartas divergem, o que existe é erro de conjunto,
@@ -168,9 +182,16 @@ def mede(registros: list[dict], conf_alta: float = 0.80,
         "frames": frames,
         "com_imagem": com_imagem,
         "com_mao": com_mao,
+        "com_carta": com_carta,
         "duracao": duracao,
         "fps": uteis / duracao if duracao else 0.0,
-        "cobertura": com_mao / frames if frames else 0.0,
+        # denominador = frames com carta no quadro, NÃO frames da gravação:
+        # a gravação inclui o tempo em que ninguém estava na frente da câmera,
+        # e medir contra ela transforma "app ligado sozinho" em defeito de
+        # enquadramento. Foi o erro cometido em 2026-08-20.
+        "com_carta_e_mao": com_carta_e_mao,
+        "cobertura": com_carta_e_mao / com_carta if com_carta else 0.0,
+        "atividade": com_carta / frames if frames else 0.0,
         "atraso": {
             "n": len(atrasos),
             "mediana": _percentil(atrasos, 0.5),
@@ -224,8 +245,11 @@ def imprime(res: dict, rotulo: str = "", detalhar: bool = True):
     print(f"  ORDEM errada: {o['errada']}/{o['comparaveis']} frames "
           f"({100 * o['pct']:.1f}%)")
     print(f"  TROCAS da mao exibida: {res['trocas']}")
-    print(f"  COBERTURA: mao na tela em {res['com_mao']}/{res['frames']} "
-          f"frames ({100 * res['cobertura']:.1f}%)")
+    print(f"  COBERTURA: mao na tela em {res['com_carta_e_mao']}/"
+          f"{res['com_carta']} frames COM CARTA no quadro "
+          f"({100 * res['cobertura']:.1f}%)")
+    print(f"  ATIVIDADE: carta no quadro em {res['com_carta']}/{res['frames']} "
+          f"frames da gravacao ({100 * res['atividade']:.1f}%)")
     if not detalhar:
         return
     if c["por_carta"]:

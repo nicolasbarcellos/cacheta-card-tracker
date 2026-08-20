@@ -52,16 +52,68 @@ hoje mesmo tendo sido gravadas com 60:
 | contradição | 7,3% | 13,8% |
 | ordem errada | 0,7% | 0,2% |
 | trocas da mão exibida | 17 | 45 |
-| **cobertura — mão na tela** | **16,6%** | **19,4%** |
+| cobertura (dos frames COM carta no quadro) | 98,2% | 94,4% |
+| atividade (frames com carta / gravação) | 16,5% | 18,5% |
 
-**A cobertura é o número novo, e é o pior do projeto.** O leque passa ~82% do tempo fora do
-quadro: nessas partidas o leitor não tinha o que ler em 4 de cada 5 frames. Nenhum parâmetro
-conserta isso e os outros três números não denunciam — eles só olham os frames em que há mão na
-tela. Por isso a cobertura entrou na saída padrão do instrumento.
+**O denominador da cobertura é a lição, e eu errei nele primeiro.** Contada sobre todos os frames
+da gravação, ela dá 16,6% e 19,4%, e a leitura óbvia — "o leque passa 82% do tempo fora do quadro"
+— está errada: a gravação é que ficou rodando com ninguém na frente da câmera. A linha do tempo
+mostra na hora (na de 12,8 min o jogo inteiro cabe nos 3 primeiros minutos; na de 23 min o jogo
+vem em blocos, com pausas de 100% vazio entre eles). Contada sobre os frames em que HÁ carta no
+quadro, a cobertura é 98,2% e 94,4%: quando há o que ler, a tela mostra mão. Por isso o
+instrumento publica os dois números separados — *cobertura* e *atividade*.
+
+**O enquadramento, esse, está bom durante o jogo** (medido nos frames com 3+ cartas da partida de
+16:22): leque a 631 px da esquerda e 392 px do topo, com folga de 648 px à direita e 399 px
+embaixo; índice de 109×152 px, leque ocupando 43% da largura do quadro; e só 0,7% dos frames
+encostando na zona morta da borda. Não há aqui o que consertar.
 
 A contradição quase dobra entre as duas partidas (7,3% × 13,8%) e é concentrada em poucas cartas
 (na de 23 min, `10S` e `3S` respondem por metade). 97% das ocorrências são de cartas que *foram*
 da mão em algum momento — ou seja, é atraso e transição, não carta estranha.
+
+### O modelo inventa cartas no AMBIENTE, e desde 19/08 elas chegam à tela
+
+O que a investigação do enquadramento achou de verdade. Na partida de 15:50, **os primeiros 37 s
+mostram na tela uma mão de duas cartas (`10C QC`) sem que exista carta nenhuma no quadro**: a
+câmera está apontada para a sala, e o modelo lê o logo *"10COC ... LEAGUE"* pintado na parede como
+índices de carta. Em outro trecho, a câmera pega uma parede lisa e saem três cartas (`5S 4D KS`)
+de textura de reboco. São 9 exibições e ~30 s de tela mostrando mão que não existe.
+
+Não é um fantasma qualquer: é consequência direta da virada de escopo. Até 19/08 o `StableHand` só
+aceitava tamanhos `0`, `hand_size` e `hand_size + 1`, e uma "mão" de 2 cartas era descartada de
+graça. Agora **qualquer tamanho estável é aceito** — e uma parede é o objeto mais estável que
+existe, mais estável que uma mão de verdade. O custo assumido naquele commit ("uma leitura
+incompleta mas estável passa a ser exibida") saiu pior do que o previsto: não é leitura incompleta
+de uma mão real, é mão que não existe.
+
+Medido, comparando o trecho fantasma (0-37 s) com um trecho de mão real na mesma gravação:
+
+| | fantasma (parede) | mão de verdade |
+|---|---|---|
+| confiança p50 | 0,40 | 0,94 |
+| confiança p95 | 0,94 | 0,98 |
+| deslocamento entre frames | p50 1,2 px | p50 1,8 px |
+
+**A hipótese "a parede não se mexe, a mão sim" está REFUTADA**: o leque é segurado firme e anda
+1,8 px entre frames, contra 1,2 px do fantasma — não separa nada. A confiança separa na mediana,
+mas o p95 do fantasma é 0,94: o logo da parede é lido com a mesma convicção de uma carta boa, e
+por isso limiar sozinho também não resolve.
+
+**Subir o `min_confidence` está REFUTADO de novo, agora por um mecanismo NOVO.** Varrido com o
+`mede_leitura.py` na partida de 16:22: em 0,45 e acima, a contradição salta de 7,3% para **50%** e
+as trocas caem de 17 para 8 — a tela CONGELA numa mão de **12 cartas** por 1.991 dos 3.682 frames.
+A causa é a regra de oclusão: com menos detecções por frame, cada frame parece "sumiram cartas", o
+leitor congela, as vagas velhas não expiram e a mão exibida cresce e trava. (Na partida de 15:50 o
+mesmo limiar até melhora a nota — 13,8% para 11,1% — porque lá ele mata o fantasma da parede. Uma
+partida só teria dado a conclusão oposta.)
+
+Fica então o conserto estrutural, que é o do método do projeto: **dado real negativo**. As
+gravações já têm ~33 mil frames de sala vazia em disco, de graça, e nenhum deles esteve no treino.
+Frame sem carta nenhuma rotulado como fundo é exatamente o que ensina o modelo a não disparar no
+logo da parede — e não custa tempo de jogo. Cuidado conhecido: só entram frames em que NÃO HÁ
+carta alguma no quadro (índice visível e sem rótulo ensina o contrário do que se quer), o que pede
+a auditoria por folha de contato que o `extrai_gravacao.py` já usa.
 
 Duas decisões de medição que mudam o resultado e não são óbvias (as duas estão em `app/leitura.py`,
 com teste):
