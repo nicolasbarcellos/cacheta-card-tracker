@@ -91,6 +91,9 @@ class FanReader:
         # 7,5% para 9,2%. Publicar aqui evita a alternativa, que seria a
         # medição reimplementar o agrupamento e divergir do leitor sem aviso.
         self.ultimo_leque: list = []
+        # Quantas vezes cada código apareceu no quadro em cada um dos últimos
+        # `window` frames. É a base do teto por código — ver `_recompute`.
+        self._vistos: deque = deque(maxlen=window)
 
     def _cortada(self, box) -> bool:
         """A caixa encosta na borda do quadro, então o índice está amputado.
@@ -314,6 +317,7 @@ class FanReader:
         # de 7,5% para 76% e a mão exibida mudava 4 vezes numa partida inteira.
         detections = self._so_o_leque(detections)
         self.ultimo_leque = list(detections)
+        self._vistos.append(Counter(d.card.code for d in detections))
 
         centers = [((d.box[0] + d.box[2]) / 2, (d.box[1] + d.box[3]) / 2)
                    for d in detections]
@@ -522,6 +526,53 @@ class FanReader:
                 if not (rotulos[self._winner(s["votes"], s.get("label"))] > 1
                         and mediana > 0
                         and pesos[id(s)] < self.peso_min * mediana)]
+        # TETO POR CÓDIGO: a mesma carta não pode estar na mão mais vezes do que
+        # o quadro chegou a mostrar DE UMA VEZ na janela recente.
+        #
+        # Medido na partida de 20/08, a primeira gravada sem o teto de vagas
+        # (`max_slots`, removido em 19/08 junto com "não assumir o jogo"):
+        # **44,5% dos frames exibiam 17 cartas**, com a mesma carta repetida
+        # TRÊS vezes (`5D 5D`, `KC KC KC`, `7D 7D 7D`). Todas as gravações
+        # anteriores param em 10, que era exatamente o teto antigo. As guardas
+        # que ficaram no lugar dele não seguram vaga órfã: `fan_peso_min` só
+        # mata duplicata FRACA, e a órfã de um leque que se moveu é forte —
+        # carrega os votos acumulados de quando a carta estava ali.
+        #
+        # Este teto não sabe que jogo é este, que era o requisito da virada de
+        # escopo: ele não diz quantas cartas a mão tem, diz que uma carta não
+        # está em três lugares se nunca foi vista em três lugares no mesmo
+        # frame. Com dois baralhos, gêmeas legítimas aparecem juntas em algum
+        # frame e sobrevivem; a órfã, não.
+        #
+        # O máximo é tirado da JANELA e não do frame atual, senão a carta
+        # momentaneamente encoberta (dedo na frente) seria cortada — e segurar
+        # a carta durante a oclusão é justamente o que o leitor existe para
+        # fazer.
+        if self._vistos:
+            teto: Counter = Counter()
+            for c in self._vistos:
+                for code, n in c.items():
+                    if n > teto[code]:
+                        teto[code] = n
+            por_codigo: dict[str, list[dict]] = {}
+            for s in confirmed:
+                rotulo = self._winner(s["votes"], s.get("label"))
+                por_codigo.setdefault(rotulo, []).append(s)
+            mantidos = []
+            for code, slots in por_codigo.items():
+                if len(slots) > teto[code]:
+                    # `misses` antes do peso, como no `_corta` e pelo mesmo
+                    # motivo: depois de o leque se mover, a vaga ÓRFÃ ainda é
+                    # tão "forte" quanto a nova (leva os votos de quando a
+                    # carta estava ali), e o desempate por peso ficaria no
+                    # empate — mantendo justamente a que não corresponde a
+                    # nenhuma carta no quadro.
+                    slots = sorted(slots,
+                                   key=lambda s: (s["misses"],
+                                                  -self._weight(s["votes"]))
+                                   )[:teto[code]]
+                mantidos += slots
+            confirmed = mantidos
         if self.max_slots is not None:
             confirmed = self._corta(confirmed, self.max_slots)
         confirmed.sort(key=lambda s: s["x"])
@@ -568,3 +619,4 @@ class FanReader:
         self._empty = 0
         self._occluded = 0
         self.ultimo_leque = []
+        self._vistos.clear()

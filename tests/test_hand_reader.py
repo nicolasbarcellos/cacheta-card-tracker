@@ -594,3 +594,45 @@ def test_mao_exibida_inchada_nao_congela_o_leitor_para_sempre():
     for _ in range(30):                  # bem mais que `expire`
         r.update(nove)
     assert r.cards == codigos[:9]        # a tela se corrigiu, nao travou
+
+
+def test_carta_nao_aparece_duas_vezes_se_nunca_foi_vista_duas_vezes():
+    """Vaga ORFA nao pode duplicar a carta na mao exibida.
+
+    Medido na partida de 20/08, a PRIMEIRA gravada sem o teto de vagas
+    (`max_slots`, removido em 19/08 junto com "nao assumir o jogo"): 44,5% dos
+    frames exibiam 17 cartas, com a mesma carta repetida TRES vezes. Todas as
+    gravacoes anteriores param em 10, que era o teto antigo.
+
+    O leque se move, a carta cria vaga nova e a velha ainda nao expirou — e a
+    velha e FORTE, porque carrega os votos de quando a carta estava ali. Por
+    isso o `fan_peso_min`, que so mata duplicata fraca, nao pega este caso.
+
+    O teto novo nao sabe que jogo e este (era o requisito da virada de escopo):
+    ele nao diz quantas cartas a mao tem, diz que uma carta nao esta em dois
+    lugares se nunca foi vista em dois lugares no MESMO frame.
+    """
+    r = FanReader(min_appear=3, expire=30, window=30)
+    for _ in range(10):
+        r.update(fan(("AS", 100), ("2H", 500), ("3D", 600)))
+    assert r.cards == ["AS", "2H", "3D"]
+
+    # o leque se moveu: o AS salta para 300, longe demais para casar com a
+    # propria vaga (match_dist=45). Nasce vaga nova e a velha fica orfa.
+    for _ in range(10):
+        r.update(fan(("AS", 300), ("2H", 500), ("3D", 600)))
+    assert r.cards.count("AS") == 1
+    assert r.cards == ["AS", "2H", "3D"]
+
+
+def test_gemeas_de_verdade_sobrevivem_ao_teto_por_codigo():
+    """A cacheta usa DOIS baralhos: duas cartas iguais na mao sao legitimas.
+
+    O que as separa da vaga orfa e terem sido vistas JUNTAS num frame — e e
+    exatamente isso que o teto mede. Sem este teste, apertar o teto para matar
+    a orfa mataria tambem a gemea, que e o erro oposto e igualmente caro.
+    """
+    r = FanReader(min_appear=3, expire=30, window=30)
+    for _ in range(10):
+        r.update(fan(("AS", 100), ("AS", 300), ("2H", 500)))
+    assert r.cards.count("AS") == 2

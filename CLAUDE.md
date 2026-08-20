@@ -21,7 +21,11 @@ Três consequências que invalidam parte grande do que está escrito abaixo:
    Três números, todos medidos por replay contra uma partida gravada:
    - *atraso* — segundos entre a leitura viva mudar e a tela mudar;
    - *contradição* — % de frames em que uma carta lida com confiança ≥ 0,80 não está na tela;
-   - *trocas* — quantas vezes a mão exibida mudou (acima do número de jogadas = tremor).
+   - *trocas* — quantas vezes a mão exibida mudou (acima do número de jogadas = tremor);
+   - *excesso* — % de frames em que a TELA mostra carta que o quadro não mostrou. **Faltava até
+     2026-08-20, e a falta era grave**: contradição só cobra carta FALTANDO na tela e ordem só
+     compara quando os conjuntos batem, então um leitor que mostrasse TUDO o que já viu tirava nota
+     ótima. Foi assim que 44,5% de frames exibindo 17 cartas passaram despercebidos.
 
    O instrumento é `scripts/mede_leitura.py` (núcleo em `app/leitura.py`, testado). Ele é o
    irmão do `scripts/replay.py`: aquele dá a nota de compra/descarte e precisa de gabarito
@@ -283,6 +287,31 @@ instável, e a mão indo a zero (jogador abaixou as cartas) não pode virar nove
      `expire` frames de oclusão, as vagas são descartadas e o leque é relido do zero. Custo: ~1 s
      a mais para a mão aparecer depois de reabrir. **Validado ao vivo**: o gesto de fechar com as
      duas mãos, encaixar a carta no meio e reabrir passou a registrar a compra certa.
+   - **TETO POR CÓDIGO: a carta não está em três lugares se nunca foi vista em
+     três lugares** (2026-08-20). O buraco que a remoção do `max_slots` abriu, e
+     ele só apareceu na primeira partida gravada DEPOIS daquela remoção: **44,5%
+     dos frames exibiam 17 cartas**, com a mesma carta repetida três vezes
+     (`5D 5D`, `KC KC KC`, `7D 7D 7D`). Todas as quatro gravações anteriores
+     param em 10 — que era exatamente o teto antigo (`hand_size + 1`).
+
+     O mecanismo é o que o próprio `max_slots` existia para matar: o leque se
+     move, a carta cria vaga nova e a velha ainda não expirou. E a órfã é
+     **forte** — carrega os votos de quando a carta estava ali — então o
+     `fan_peso_min`, que só mata duplicata FRACA, não a pega.
+
+     O teto novo continua não sabendo que jogo é este, que era o requisito da
+     virada de escopo: ele não diz quantas cartas a mão tem, diz que um CÓDIGO
+     não pode aparecer mais vezes do que apareceu num único frame da janela
+     recente. Gêmeas legítimas dos dois baralhos aparecem juntas em algum frame
+     e sobrevivem; a órfã, não. O desempate usa `misses` antes do peso, pelo
+     mesmo motivo do `_corta`: no empate de peso, quem tem de cair é a vaga que
+     não corresponde a carta nenhuma no quadro.
+
+     Medido na partida de 20/08: **excesso 48,6% → 5,6%** e contradição 39,1% →
+     13,9%. Nas gravações antigas o custo é ~1 ponto de contradição. Guardado
+     por `test_carta_nao_aparece_duas_vezes_se_nunca_foi_vista_duas_vezes` e,
+     do lado oposto, por `test_gemeas_de_verdade_sobrevivem_ao_teto_por_codigo`.
+
    - **UMA detecção por vaga** (2026-08-04). Duas cartas não ocupam a mesma posição física, mas o
      casamento por proximidade permitia isso: num leque apertado as duas caíam dentro do raio da
      MESMA vaga e as duas votavam nela. A vaga virava empate técnico entre dois rótulos — medido ao
