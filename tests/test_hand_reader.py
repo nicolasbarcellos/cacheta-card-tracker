@@ -566,3 +566,31 @@ def test_leque_inteiro_nao_e_partido_pelo_vao():
     for _ in range(20):
         r.update(leque)
     assert len(r.cards) == 9
+
+
+def test_mao_exibida_inchada_nao_congela_o_leitor_para_sempre():
+    """O congelamento por oclusao nao pode virar estado ABSORVENTE.
+
+    Medido em 2026-08-20 numa partida gravada: a mao exibida inchou para 12
+    cartas (vaga velha que ainda nao expirou somada a nova), o quadro passou a
+    mostrar as 9 de verdade, e 9 < 12-1 em TODO frame. O leitor congelou por
+    1.936 frames seguidos (~78 s) exibindo as 12, porque o codigo que reabre
+    (`_occluded >= expire`) so roda num frame NAO congelado - que nunca chegou.
+    A contradicao da partida ia a 50%.
+
+    Ver 9 de 12 nao e oclusao: e um leque INTEIRO no quadro, e quem esta errada
+    e a tela. Ver 1 de 9 (leque fechado) continua sendo oclusao - o teste
+    `test_closing_the_fan_does_not_scramble_the_hand` guarda esse outro lado.
+    """
+    r = FanReader(min_appear=3, expire=6, window=30)
+    codigos = ["AS", "2S", "3S", "4S", "5S", "6S", "7S", "8S", "9S",
+               "10S", "JS", "QS"]
+    doze = fan(*[(code, 100 + 60 * i) for i, code in enumerate(codigos)])
+    for _ in range(10):
+        r.update(doze)
+    assert len(r.cards) == 12
+
+    nove = doze[:9]                      # as tres ultimas sumiram de vez
+    for _ in range(30):                  # bem mais que `expire`
+        r.update(nove)
+    assert r.cards == codigos[:9]        # a tela se corrigiu, nao travou

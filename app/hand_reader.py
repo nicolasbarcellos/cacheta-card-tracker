@@ -1,5 +1,12 @@
 from collections import Counter, deque
 
+# Fração da mão exibida que ainda pode estar visível para o leitor tratar o
+# frame como OCLUSÃO (leque fechado, mão na frente) em vez de leitura nova.
+# Ver o bloco de comentário em `update` — é o que impede o congelamento de
+# virar estado absorvente. 0,6 fica entre a oclusão real (11-33% visível na
+# medição) e a mão exibida inchada (75%), com folga dos dois lados.
+FRACAO_OCLUSAO = 0.6
+
 
 class FanReader:
     """Lê o leque com votação temporal por posição ("vaga").
@@ -242,7 +249,33 @@ class FanReader:
         # elas nasciam sem histórico de votos — o leitor "esquecia" o que já
         # tinha acertado e podia estabelecer rótulo errado do zero. Congelando,
         # os votos acumulados sobrevivem e a leitura certa volta na hora.
-        if self._displayed and len(detections) < len(self._displayed) - 1:
+        # ... mas a queda tem de ser GRANDE, e não só de duas cartas. Sem essa
+        # segunda condição a regra tem um estado ABSORVENTE, medido em
+        # 2026-08-20: se a mão exibida cresce para 12 (vaga velha que ainda não
+        # expirou, somada à nova) e o quadro mostra as 9 de verdade, então
+        # 9 < 12-1 em TODO frame e o leitor congela PARA SEMPRE. O código que
+        # reabre (`_occluded >= expire`, logo abaixo) só roda num frame NÃO
+        # congelado, que nunca chega. Na partida de 19/08 16:22 isso deu uma
+        # trava única de 1.936 frames (~78 s) exibindo 12 cartas, com a
+        # contradição da partida em 50%; ao vivo o mesmo estado aparece menor
+        # (175 frames seguidos), mas aparece.
+        #
+        # `FRACAO_OCLUSAO` separa as duas situações pelo que elas são de fato:
+        #
+        #   leque fechado    1 carta de 9 visíveis = 11%  -> é oclusão, congela
+        #   mão na frente    3 de 9 = 33%                 -> é oclusão, congela
+        #   mão exibida INCHADA  9 de 12 = 75%            -> não é oclusão: o
+        #                    quadro está mostrando um leque inteiro, e quem
+        #                    está errada é a tela. Deixa passar e ela se corrige
+        #
+        # A regra antiga ("queda de duas ou mais cartas") vinha de a cacheta
+        # trocar UMA carta por vez, premissa que caiu com a virada de escopo de
+        # 19/08 — a fração não sabe que jogo é este. O que ela relaxa é o caso
+        # de duas cartas sumirem de uma vez num leque pequeno; aí quem protege
+        # a tela continua sendo o `lock_frames` do StableHand, que exige a
+        # leitura nova parada por ~0,7 s.
+        if (self._displayed and len(detections) < len(self._displayed) - 1
+                and len(detections) < FRACAO_OCLUSAO * len(self._displayed)):
             # o leque não foi agrupado neste frame (o leitor congelou antes
             # disso), mas o pouco que se vê É carta da mão: para a medição,
             # conta como leque — senão a oclusão viraria um buraco na conta

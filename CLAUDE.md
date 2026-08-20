@@ -163,6 +163,9 @@ Comparação entre modelos (sem câmera, roda em disco):
 ```powershell
 python training/eval_classes.py models/cards.pt 150
 python training/eval_classes.py models/cards_backup_4.pt 150   # o anterior, MESMO conjunto
+
+# quantas cartas o modelo INVENTA onde nao ha carta (o eval_classes e cego p/ isso)
+python training/eval_negativos.py models/cards.pt training/datasets/negativos-holdout
 ```
 
 `eval_classes.py` é o instrumento de aceite de um retreino — não confie no mAP do Ultralytics, que
@@ -246,10 +249,30 @@ instável, e a mão indo a zero (jogador abaixou as cartas) não pode virar nove
      o erro virou rajada curta — com o modelo velho o errado ganhava por 2,28× **sustentado**, e
      margem nenhuma filtraria aquilo.
    - **Queda brusca = oclusão, não jogada** (`146ae94`): ver 1 carta onde havia 9 é o leque
-     fechando (as outras ficam atrás da primeira) ou a mão passando na frente. Como na cacheta a
-     mão muda de UMA carta por vez, uma queda de duas ou mais **congela** o leitor: não expira vaga
-     e não mexe na exibição. Antes disso, fechar o leque expirava as 8 vagas ocultas e ao reabrir
-     elas nasciam sem histórico de votos — o leitor "esquecia" o que já tinha acertado.
+     fechando (as outras ficam atrás da primeira) ou a mão passando na frente. Uma queda GRANDE
+     **congela** o leitor: não expira vaga e não mexe na exibição. Antes disso, fechar o leque
+     expirava as 8 vagas ocultas e ao reabrir elas nasciam sem histórico de votos — o leitor
+     "esquecia" o que já tinha acertado.
+
+     **"Grande" passou a ser uma FRAÇÃO em 2026-08-20 (`FRACAO_OCLUSAO = 0,6`), e a regra antiga
+     tinha um estado ABSORVENTE.** Ela era "queda de duas ou mais cartas", o que vinha de a cacheta
+     trocar uma carta por vez — premissa que caiu com a virada de escopo. O problema: se a mão
+     exibida incha para 12 (vaga velha que ainda não expirou somada à nova) e o quadro mostra as 9
+     de verdade, então `9 < 12-1` em TODO frame e o leitor congela **para sempre** — o código que
+     reabre (`_occluded >= expire`) só roda num frame NÃO congelado, que nunca chega. Medido na
+     partida de 19/08 16:22 re-detectada: uma trava única de **1.936 frames (~78 s)** exibindo 12
+     cartas, com a contradição da partida em **50%**. Ao vivo o mesmo estado aparece menor (175
+     frames seguidos, 184 frames com 12 cartas na tela), mas aparece.
+
+     A fração separa as duas situações pelo que elas são: leque fechado é 1 de 9 visíveis (11%),
+     mão na frente é ~3 de 9 (33%), e mão exibida inchada é 9 de 12 (75%) — que não é oclusão
+     nenhuma, é um leque inteiro no quadro com a TELA errada. Efeito medido (o mesmo vídeo, o mesmo
+     modelo): contradição **50% → 7,8%** no stream re-detectado, e nos streams ao vivo 7,3% → 6,9%
+     e 13,8% → 10,7%. O que a fração relaxa é o caso de duas cartas sumirem de uma vez num leque
+     pequeno; ali quem protege a tela continua sendo o `lock_frames`, que exige a leitura nova
+     parada por ~0,7 s. Regressão guardada por
+     `test_mao_exibida_inchada_nao_congela_o_leitor_para_sempre` — e o outro lado, o leque fechado
+     que NÃO pode bagunçar a mão, por `test_closing_the_fan_does_not_scramble_the_hand`.
    - **A DURAÇÃO da oclusão decide se as vagas ainda valem** (2026-08-04). Oclusão curta (a mão
      passando na frente) não mexe no leque: preservar os votos é o que faz a leitura certa voltar
      no primeiro frame. Oclusão longa é o leque FECHADO — e na cacheta fecha-se o leque justamente
@@ -710,6 +733,42 @@ fluxo local; o `finetune_local.py` respeita).
 gravação com que medir: `replay.py --redetectar` contra a partida que treinou o modelo mede
 decoreba, não acerto.
 
+### Dado NEGATIVO: ensinar o que não é carta (`extrai_negativos.py`, 2026-08-20)
+
+O outro lado do treino, e que faltava por inteiro. O modelo lia o logo *"10COC ... LEAGUE"* da
+parede da sala como `10C`/`QC` e textura de reboco como `5S 4D KS` — e desde 19/08 essas cartas
+inventadas chegavam à TELA (ver a seção do fantasma de ambiente). O usuário descreveu o setup que
+produz isso: câmera na sala aberta pegando o logo ao fundo e, no uso normal, virada para uma
+parede branca e lisa.
+
+Frame sem carta nenhuma é dado de treino de **rótulo vazio**, e é ainda mais barato que o do
+`extrai_gravacao.py`: não precisa nem de gabarito. Toda gravação tem minutos de sala vazia.
+
+O risco é o INVERSO do risco daquele script — incluir um frame que TEM carta ensina o modelo que
+índice é fundo, que é o tiro no pé que este arquivo já documenta. Três guardas: bloco de jogo com
+margem de 20 s para os dois lados (nada perto de jogo vira negativo), espaçamento entre amostras
+(frames vizinhos a 30 fps são a mesma imagem) e **auditoria por folha de contato** — as imagens de
+`review/` trazem em vermelho o que o modelo detectou de errado, e apagar a imagem rejeita o frame.
+
+`training/eval_negativos.py` é o instrumento de aceite, e existe porque **o `eval_classes.py` é
+cego para este defeito**: ele só olha imagens que TÊM carta, então um modelo que enxerga cartas na
+parede tira 100% nele. É a segunda vez que o instrumento de aceite aprova um erro que aparece ao
+vivo (a primeira foi o K♠→A♠ em 12/08). A conta aqui é trivial porque a verdade é conhecida por
+construção: nestas imagens o número certo de detecções é **zero**.
+
+**Os 12 fundos do gerador eram todos a MESMA superfície** — brilho médio 117 nos 12. O treino
+sintético inteiro viu praticamente um fundo só, e cenário com quinquilharia nunca apareceu; o que
+nunca apareceu não tem como ser aprendido como fundo. Entraram 7 frames de sala vazia como
+`bg_sala_*.jpg` (com logo e quadro-negro), e o leque passa a ser composto POR CIMA deles — ver o
+distrator e a carta na MESMA imagem é mais forte do que ver só o distrator sozinho num negativo.
+A cor chapada de reserva foi de 20-110 para **20-235**, com gradiente e tom neutro: parede branca é
+o setup normal, e carta branca sobre parede branca é o menor contraste que existe — o gerador só
+sabia produzir fundo escuro.
+
+`finetune_local.py` consome `datasets/negativos/` **sem repetir** (a repetição existe para o dado
+real não se diluir; negativo repetido só ensina o modelo a ter medo) e avisa acima de ~10% do
+treino, porque passar disso troca fantasma por carta perdida — e essa troca não aparece no mAP.
+
 ### Hipótese refutada: nitidez do frame não separa acerto de erro
 
 O erro A↔4 aparecia mais com a câmera balançando, o que sugeria filtrar frames borrados
@@ -880,6 +939,38 @@ Duas tentativas MEDIDAS E REFUTADAS, para não repetir:
 **Cuidado ao mexer no `fan_peso_min`**: o platô de 100%/100% é estreito (0,6-0,7) e cada jogada
 vale 5 pontos numa amostra de 19. O mecanismo é sólido, o número é fraco — confirme com partida
 nova antes de tratar 0,6 como verdade.
+
+### Retreino de 2026-08-20: o logo da parede deixou de ser carta
+
+Primeiro treino com **dado negativo** (`extrai_negativos.py`) e com fundos de sala no gerador.
+2.802 imagens de treino: 1.800 sintéticas novas + 947 reais + **55 negativos (2,0%)**, 12 épocas,
+1280 px, batch 3. Holdouts de propósito: **11/08** (medir classe) e **19/08 15:50** (medir o
+fantasma) ficaram inteiras fora do treino.
+
+| | antigo (`cards_backup_8.pt`) | novo |
+|---|---|---|
+| imagens sem carta COM carta inventada (holdout) | 25,9% | **0,0%** |
+| cartas inventadas | 35 (sempre `10C`/`QC`) | **0** |
+| índices detectados (holdout real 11/08) | 100,0% | **100,0%** |
+| classe correta (holdout real 11/08) | 99,2% | **99,3%** |
+
+O ganho não custou detecção — que era o risco real de treinar com negativo (passar de ~10% do
+treino faz o modelo PERDER carta de verdade, e isso não aparece no mAP).
+
+**Teste de ponta a ponta**, os dois modelos lendo o MESMO vídeo nos 40 s do fantasma de 15:50:
+
+| | antigo | novo |
+|---|---|---|
+| tela mostrando mão que não existe | 940 frames (~30 s) | **0** |
+| a mão real de 9 no mesmo trecho | saía com **11 cartas** (9 + as 2 do logo) | **9** |
+
+O bônus é a segunda linha: o logo não só criava mão do nada, ele também **contaminava a mão de
+verdade**, colando duas cartas a mais no leque real.
+
+Ressalva honesta: na partida de 19/08 16:22 re-detectada, a contradição do modelo novo saiu
+**10,8% contra 7,8%** do antigo — mesmas cartas de sempre (`QH`, `5H`, `7S`), frames de transição,
+com o novo trocando a tela mais vezes (21 × 18). São ~85 frames em 3.682 numa amostra de UMA
+partida; não invalida o retreino, mas registra que essa métrica não melhorou junto.
 
 #### `--redetectar` NÃO é comparável com o número ao vivo
 
