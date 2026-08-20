@@ -9,6 +9,13 @@ métrica nova, e ele mede três coisas contra uma partida gravada:
   a mostrá-lo. É o que o jogador sente como "demorou";
 - **contradição** — % dos frames em que uma carta está visível no leque com
   confiança alta e NÃO está na tela. É o que o jogador vê como "está errado";
+- **excesso** — o espelho da contradição: % dos frames em que a TELA mostra uma
+  carta que o quadro não mostrou em nenhum dos últimos `fan_window` frames.
+  Faltava, e a falta era grave: medida a partida de 20/08, **44,5% dos frames
+  exibiam 17 cartas**, com a mesma carta repetida três vezes — e os outros três
+  números saíram bons, porque contradição só cobra carta FALTANDO na tela e
+  ordem só compara quando os conjuntos batem. Um leitor que mostra tudo o que
+  já viu tinha nota ótima;
 - **trocas** — quantas vezes a mão exibida mudou. Acima do número de jogadas da
   partida, o excesso é tremor.
 
@@ -38,7 +45,7 @@ Roda o pipeline DE VERDADE (`app.main.process_frame`), nunca uma
 reimplementação — ver a nota de fidelidade em `app/replay.py`.
 """
 
-from collections import Counter
+from collections import Counter, deque
 
 from app.config import config
 from app.main import build_pipeline, process_frame
@@ -104,6 +111,16 @@ def mede(registros: list[dict], conf_alta: float = 0.80,
     por_carta: Counter = Counter()
     exemplos_contra: list[tuple] = []
 
+    # Janela do EXCESSO: quantas vezes cada código apareceu no quadro em cada um
+    # dos últimos frames. O teto é o MÁXIMO da janela, não o do frame atual —
+    # senão uma carta momentaneamente encoberta (o dedo passando) contaria como
+    # sobrando, e ficar exibindo a carta durante a oclusão é o comportamento
+    # certo, não defeito.
+    janela: deque = deque(maxlen=max(config.fan_window, 1))
+    excesso = 0
+    por_carta_excesso: Counter = Counter()
+    exemplos_excesso: list[tuple] = []
+
     for rec in registros:
         if rec["t"] != "frame":
             continue
@@ -118,6 +135,9 @@ def mede(registros: list[dict], conf_alta: float = 0.80,
             com_carta += 1
         process_frame(dets, tracker, leitor, trava, verbose=False)
         leque = leitor.ultimo_leque
+        # entra ANTES de medir o excesso: a carta que acabou de aparecer no
+        # quadro não pode ser cobrada como sobrando na tela
+        janela.append(Counter(d.card.code for d in leque))
 
         vivo = tuple(sorted(leitor.cards))
         visto_desde.setdefault(vivo, ts)
@@ -163,6 +183,25 @@ def mede(registros: list[dict], conf_alta: float = 0.80,
                 if len(exemplos_ordem) < max_exemplos:
                     exemplos_ordem.append((rec["i"], round(ts, 1),
                                            list(exibida), fisica))
+
+        # EXCESSO: a tela mostra mais cópias de um código do que o quadro
+        # chegou a mostrar de uma vez na janela recente. Pega tanto a carta que
+        # some do quadro e fica na tela quanto a vaga órfã que duplica a mesma
+        # carta — foi assim que a mão exibida chegou a 17 cartas em 20/08.
+        teto: Counter = Counter()
+        for c in janela:
+            for code, n in c.items():
+                if n > teto[code]:
+                    teto[code] = n
+        sobrando = Counter(exibida) - teto
+        if sobrando and janela:
+            excesso += 1
+            for code in sobrando:
+                por_carta_excesso[code] += 1
+            if len(exemplos_excesso) < max_exemplos:
+                exemplos_excesso.append((rec["i"], round(ts, 1),
+                                         " ".join(sorted(sobrando.elements())),
+                                         list(exibida)))
 
         vistas = Counter(d.card.code for d in leque
                          if d.confidence >= conf_alta)
@@ -213,6 +252,12 @@ def mede(registros: list[dict], conf_alta: float = 0.80,
             "por_carta": por_carta.most_common(),
             "exemplos": exemplos_contra,
         },
+        "excesso": {
+            "frames": excesso,
+            "pct": excesso / com_mao if com_mao else 0.0,
+            "por_carta": por_carta_excesso.most_common(),
+            "exemplos": exemplos_excesso,
+        },
     }
 
 
@@ -241,6 +286,9 @@ def imprime(res: dict, rotulo: str = "", detalhar: bool = True):
     print(f"  CONTRADICAO: {c['frames']}/{res['com_mao']} frames "
           f"({100 * c['pct']:.1f}%) com carta no leque a conf >= {c['conf']} "
           f"fora da tela")
+    e = res["excesso"]
+    print(f"  EXCESSO: {e['frames']}/{res['com_mao']} frames "
+          f"({100 * e['pct']:.1f}%) com carta na tela que o quadro nao mostrou")
     o = res["ordem"]
     print(f"  ORDEM errada: {o['errada']}/{o['comparaveis']} frames "
           f"({100 * o['pct']:.1f}%)")
