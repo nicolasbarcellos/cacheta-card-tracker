@@ -59,6 +59,27 @@ hoje mesmo tendo sido gravadas com 60:
 | cobertura (dos frames COM carta no quadro) | 98,2% | 94,4% |
 | atividade (frames com carta / gravação) | 16,5% | 18,5% |
 
+**Linha de base de 2026-08-20**, depois do retreino com negativos, do teto por código e da fração
+de oclusão — duas partidas novas, gravadas no dia, com a câmera na parede branca:
+
+| | 20/08 17:42 (antes do teto por código) | 20/08 19:43 (depois) |
+|---|---|---|
+| atraso até a tela | 0,54 s | **0,52 s** |
+| contradição | 39,1% | **12,8%** |
+| **excesso** | **48,6%** | **7,8%** |
+| ordem errada | 0,6% | 1,0% |
+| maior mão exibida | **17 cartas** | **11** (0,3% dos frames) |
+| frames com carta repetida | 43,9% | **0** |
+| cobertura | 99,4% | 99,2% |
+
+A segunda partida foi jogada **de propósito com muito movimento** (o leque atravessando o quadro,
+fechando e reabrindo), que é o que produz vaga órfã. Zero duplicatas em 10.103 frames.
+
+O que sobra da contradição é **erro de modelo que o pipeline conserta**: a maior fatia (`AS`, 314
+frames) é a confusão A↔4 — o modelo lê o 4♠ como A♠ com 0,85 ao lado da leitura certa, e a votação
+temporal fica com a certa. Some com transição (carta da mão não detectada por um instante). Ou
+seja: a TELA esteve certa; a contradição está medindo o modelo, não a exibição.
+
 **O denominador da cobertura é a lição, e eu errei nele primeiro.** Contada sobre todos os frames
 da gravação, ela dá 16,6% e 19,4%, e a leitura óbvia — "o leque passa 82% do tempo fora do quadro"
 — está errada: a gravação é que ficou rodando com ninguém na frente da câmera. A linha do tempo
