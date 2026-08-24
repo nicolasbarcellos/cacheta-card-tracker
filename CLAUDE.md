@@ -44,6 +44,21 @@ O que veio de graça: **o atraso era quase todo seguro para o EVENTO**. Um event
 histórico para sempre, uma mão exibida errada se corrige no frame seguinte — por isso o
 `lock_frames` podia cair de 60 para 20 sem custar acerto (a varredura está no `config.py`).
 
+### Próximo alvo (medido em 2026-08-24, e ataca-se sem webcam)
+
+**O `hand_instances` descarta carta que o modelo ENTREGOU acima do limiar** — 8% a 36% de todas as
+perdas da tela, dependendo da gravação. Em 100% dos casos quem a absorve tem rótulo DIFERENTE no
+mesmo lugar e vence por +0,07 de confiança na mediana (p10 +0,01): é uma decisão de UM frame,
+tomada por moeda, antecipando sem volta o voto ponderado no tempo que o `FanReader` existe para
+fazer. É a mesma crítica que este arquivo já faz ao `agnostic_nms`, um estágio antes.
+
+A ideia é deixar os dois palpites do mesmo canto chegarem ao voto do leitor em vez de matar um por
+frame. **É mexida delicada**: a regra de "UMA detecção por vaga" (2026-08-04) existe por um motivo
+medido, e desfazê-la sem cuidado traz de volta o empate técnico entre dois rótulos na mesma vaga.
+Roda inteira contra as seis gravações em disco, sem custar tempo de jogo.
+
+Números, caminhos de confirmação e o que ficou em aberto: "De que é feito o EXCESSO que sobra".
+
 ### O que a métrica diz hoje, e o número que ninguém tinha medido (2026-08-20)
 
 As duas partidas gravadas em 19/08 (12,8 min e 23,0 min, ~29 fps), medidas pelo `mede_leitura.py`
