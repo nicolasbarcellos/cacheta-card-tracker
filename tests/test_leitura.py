@@ -146,6 +146,48 @@ def test_contradicao_nao_cobra_leitura_de_confianca_baixa():
     assert dict(res["contradicao"]["por_carta"]).get("KC") is None
 
 
+def test_excesso_cobra_a_carta_que_ficou_na_tela_depois_de_sumir_do_quadro():
+    """O espelho da contradição, e o número que faltava até 2026-08-20.
+
+    Sem ele, um leitor que exibisse TUDO o que já viu tirava nota ótima — foi
+    assim que 44,5% de frames exibindo 17 cartas passaram despercebidos.
+    """
+    mao = leque(["AS", "2S", "3S", "4H", "5H"])
+    # o leque perde a última carta: some do QUADRO, e a tela demora a soltar
+    menor = mao[:-1]
+    res = mede(partida([(mao, ASSENTA), (menor, ASSENTA)]))
+
+    assert res["excesso"]["frames"] > 0
+    assert dict(res["excesso"]["por_carta"])["5H"] > 0
+
+
+def test_excesso_com_o_leitor_congelado_sai_em_contagem_PROPRIA():
+    """Segurar a mão durante a oclusão é o comportamento PEDIDO, não defeito.
+
+    Com o leque fechado (ou o quadro vazio) o invariante do projeto é congelar
+    o estado, não zerá-lo — e nesses frames a tela mostra, de propósito, carta
+    que o quadro não está mostrando. Cobrar isso no total mediria a feature
+    como erro, que é o que a contradição já fez com a carta segurada à parte.
+
+    Medido nas gravações em 2026-08-24: 16-51% do excesso está neste estado.
+    Fica publicado à parte em vez de descontado, pelo mesmo motivo que a
+    cobertura e a atividade são dois números — mudar o denominador em silêncio
+    esconde, publicar os dois deixa escolher. Quem diz que o leitor congelou é
+    o LEITOR (`FanReader.congelado`), não uma cópia da regra dentro da métrica.
+    """
+    mao = leque(["AS", "2S", "3S", "4H", "5H"])
+    # o leque FECHA: sobra uma carta só, bem abaixo da fração de oclusão
+    fechado = mao[:1]
+    res = mede(partida([(mao, ASSENTA), (fechado, ASSENTA)]))
+
+    assert res["excesso"]["frames"] > 0
+    assert res["excesso"]["congelado"] > 0
+    # e a repartição fecha: o que sobra do congelado é o excesso "vivo"
+    vivo = res["excesso"]["frames"] - res["excesso"]["congelado"]
+    assert abs(res["excesso"]["pct_vivo"] - vivo / res["com_mao"]) < 1e-9
+    assert res["excesso"]["pct_vivo"] <= res["excesso"]["pct"]
+
+
 def test_ordem_certa_nao_conta_como_erro():
     """O leque parado e bem lido tem de dar 0% de ordem errada.
 

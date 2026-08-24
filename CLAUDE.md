@@ -97,6 +97,93 @@ A contradição quase dobra entre as duas partidas (7,3% × 13,8%) e é concentr
 (na de 23 min, `10S` e `3S` respondem por metade). 97% das ocorrências são de cartas que *foram*
 da mão em algum momento — ou seja, é atraso e transição, não carta estranha.
 
+### De que é feito o EXCESSO que sobra, e o que ele mede de verdade (2026-08-24)
+
+Medido nas seis gravações em disco, sem jogar nada. A pergunta era se valia endurecer o teto por
+código agora que se sabe que **o usuário joga com UM baralho** (e aí carta repetida na tela é
+sempre erro). **A medição reprovou a ideia**, e o que ela achou no lugar é mais útil.
+
+**O excesso não é duplicata.** Separando os frames de excesso em "a tela repete um código" ×
+"a tela mostra carta que sumiu do quadro":
+
+| gravação | excesso | só duplicata | só carta parada | código repetido na tela |
+|---|---|---|---|---|
+| 20/08 19:43 | 7,8% | **0,0%** | 7,8% | 0 |
+| 20/08 17:42 | 5,7% | 1,2% (+0,4% misto) | 4,1% | 2,5% |
+| 19/08 16:22 | 3,9% | **0,0%** | 3,9% | 0 |
+| 19/08 15:50 | 8,4% | **0,0%** | 8,4% | 0 |
+| 11/08 | 7,6% | **0,0%** | 7,6% | 0 |
+| 12/08 | 6,5% | 0,3% | 6,2% | 1,9% |
+
+Endurecer o teto para um baralho compraria **~1,6 ponto numa gravação de seis** e nada em quatro
+delas — enquanto custaria a única proteção que sobra se um dia entrarem dois baralhos. Não foi
+feito.
+
+**Um sexto a metade do excesso é comportamento PEDIDO.** Classificando cada frame de excesso pelo
+estado do leitor: 16-51% acontecem com o leitor CONGELADO por oclusão (leque fechado, mão na
+frente) ou com o quadro VAZIO — os dois casos em que o invariante do projeto manda segurar a mão,
+não zerá-la. Cobrar isso é medir a feature como defeito, que é o erro que a contradição já cometeu
+com a carta segurada à parte.
+
+**Hipótese refutada na mesma medição:** montar o teto do excesso com o QUADRO inteiro (todas as
+detecções) em vez do LEQUE (`ultimo_leque`) quase não muda nada — 3,5% → 3,4% em 11/08, 3,2% →
+3,1% em 15:50, 3,3% → 3,3% em 16:22. A carta segurada à parte não infla o excesso como inflava a
+contradição.
+
+**O que sobra é o `StableHand`, e ele está CERTO.** Dos frames de excesso em estado normal,
+**95-100% são a tela travada**, não vaga viva no `FanReader` (que já expirou a dela). E o buraco
+de detecção por trás é enorme: a carta fica **1,6 s (mediana) a 5 s** sem ser detectada, com a mão
+inteira no quadro. Na partida de 20/08 19:43, cuja mão real é conhecida (`9S 4S 8H AH 2S KC 7D 5D
+JH`), a carta cobrada como sobrando é o `9S` — que **é** da mão. A tela estava certa; quem falhou
+foi a detecção, e a memória do pipeline é o que salvou a exibição.
+
+Ou seja: **as duas notas residuais medem o MODELO, não a tela.** O último commit já tinha dito
+isso da contradição (a fatia `AS` é a confusão A↔4); agora vale também para o excesso.
+
+**Onde o modelo perde a carta** (buracos de ≥30 frames, as quatro gravações):
+
+| | buracos | na PONTA do leque | base de todas as detecções | confiança no último frame visto | base |
+|---|---|---|---|---|---|
+| 20/08 19:43 | 45 | 60% | 44% | 0,83 | 0,93 |
+| 19/08 16:22 | 8 | 88% | 44% | 0,72 | 0,94 |
+| 19/08 15:50 | 19 | 74% | 46% | 0,79 | 0,95 |
+| 11/08 | 37 | 70% | 43% | 0,59 | 0,94 |
+
+A perda é ~1,6× mais provável nas PONTAS, e vem sempre precedida de **confiança já degradada** (o
+p10 dessas cartas fica em 0,34-0,47, contra 0,82-0,88 da base). Duas explicações medidas e
+DESCARTADAS: não é tamanho (caixa de 115 px contra 118 px da base) e não é a carta estar girada no
+instante da perda (proporção largura/altura 0,71-0,75, contra base 0,69-0,77).
+
+**Qual ponta NÃO ficou decidido**, e o dado é fraco de propósito para não virar conclusão: no
+total dá esquerda 44% × direita 24%, mas numa das gravações inverte (75% à direita) e cada
+gravação tem 8-45 buracos. Não separa "dedo cobrindo o índice" de "índice girado no extremo do
+arco".
+
+O que ficou medido de sobra, e é geometria pura do setup: **as caixas das pontas são muito mais
+gordas que as do meio** — proporção largura/altura 0,82-0,99 na ponta contra 0,61-0,69 no meio, em
+todas as gravações. O índice das cartas extremas chega mesmo girado ao modelo; só não é isso que
+explica o instante da perda.
+
+O instrumento passou a publicar essa repartição (`mede_leitura.py`, com teste conferido por
+mutação). Quem diz que o leitor congelou é o LEITOR (`FanReader.congelado`), não uma cópia da regra
+dentro da métrica — a mesma decisão do `ultimo_leque`. Os números de hoje:
+
+| gravação | excesso total | com o leitor congelado | **com o leitor vivo** |
+|---|---|---|---|
+| 20/08 19:43 | 7,8% | 281 frames | **5,0%** |
+| 19/08 16:22 | 3,9% | 22 frames | **3,3%** |
+| 19/08 15:50 | 8,4% | 407 frames | **3,2%** |
+| 11/08 | 7,6% | 460 frames | **3,5%** |
+
+O total NÃO foi descontado de propósito: mudar o denominador em silêncio esconde, e foi
+exatamente o excesso cru que denunciou os 17 cartas. Publicar os dois deixa escolher.
+
+Alvo que isto aponta, e que não custa tempo de jogo: os frames em que a carta da ponta é detectada
+com **0,34-0,59 de confiança** logo antes de sumir são exatamente o dado difícil que o modelo
+precisa, e o rótulo deles sai da POSIÇÃO no leque como no `extrai_gravacao.py`. Hoje aquele script
+seleciona frames em que a conta fecha; o que falta é selecionar os frames em que ela quase não
+fecha.
+
 ### O modelo inventa cartas no AMBIENTE, e desde 19/08 elas chegam à tela
 
 O que a investigação do enquadramento achou de verdade. Na partida de 15:50, **os primeiros 37 s

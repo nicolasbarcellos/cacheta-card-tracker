@@ -91,6 +91,14 @@ class FanReader:
         # 7,5% para 9,2%. Publicar aqui evita a alternativa, que seria a
         # medição reimplementar o agrupamento e divergir do leitor sem aviso.
         self.ultimo_leque: list = []
+        # CONGELADO: neste frame o leitor decidiu não mexer na mão — leque
+        # fechado / mão na frente (oclusão) ou quadro sem detecção nenhuma.
+        # Existe pela mesma razão que `ultimo_leque`: a métrica precisa saber o
+        # que o leitor DECIDIU, e uma cópia da regra dentro dela divergiria em
+        # silêncio. Medido em 2026-08-24: 16-51% dos frames de excesso estão
+        # neste estado, em que segurar a mão é o comportamento pedido e não
+        # defeito — ver `app/leitura.py`.
+        self.congelado = False
         # Quantas vezes cada código apareceu no quadro em cada um dos últimos
         # `window` frames. É a base do teto por código — ver `_recompute`.
         self._vistos: deque = deque(maxlen=window)
@@ -232,8 +240,10 @@ class FanReader:
         some — o jogador que abaixou as cartas espera ver zero, não a mão
         anterior congelada para sempre.
         """
+        self.congelado = False
         if not detections:
             self.ultimo_leque = []
+            self.congelado = True
             self._empty += 1
             if self._empty < self.expire or not (self._slots or self._displayed):
                 return False
@@ -283,6 +293,7 @@ class FanReader:
             # disso), mas o pouco que se vê É carta da mão: para a medição,
             # conta como leque — senão a oclusão viraria um buraco na conta
             self.ultimo_leque = list(detections)
+            self.congelado = True
             self._occluded += 1
             return False
 

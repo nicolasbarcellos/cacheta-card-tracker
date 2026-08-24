@@ -118,6 +118,7 @@ def mede(registros: list[dict], conf_alta: float = 0.80,
     # certo, não defeito.
     janela: deque = deque(maxlen=max(config.fan_window, 1))
     excesso = 0
+    excesso_congelado = 0
     por_carta_excesso: Counter = Counter()
     exemplos_excesso: list[tuple] = []
 
@@ -196,6 +197,14 @@ def mede(registros: list[dict], conf_alta: float = 0.80,
         sobrando = Counter(exibida) - teto
         if sobrando and janela:
             excesso += 1
+            # ... mas em que ESTADO. Com o leitor congelado (leque fechado, mão
+            # na frente, quadro vazio) segurar a mão é o comportamento pedido —
+            # o invariante do projeto é congelar, não zerar. Publicado à parte
+            # em vez de descontado do total, pelo mesmo motivo que a cobertura
+            # e a atividade viraram dois números: mudar o denominador em
+            # silêncio esconde; publicar os dois deixa escolher.
+            if leitor.congelado:
+                excesso_congelado += 1
             for code in sobrando:
                 por_carta_excesso[code] += 1
             if len(exemplos_excesso) < max_exemplos:
@@ -255,6 +264,8 @@ def mede(registros: list[dict], conf_alta: float = 0.80,
         "excesso": {
             "frames": excesso,
             "pct": excesso / com_mao if com_mao else 0.0,
+            "congelado": excesso_congelado,
+            "pct_vivo": (excesso - excesso_congelado) / com_mao if com_mao else 0.0,
             "por_carta": por_carta_excesso.most_common(),
             "exemplos": exemplos_excesso,
         },
@@ -289,6 +300,10 @@ def imprime(res: dict, rotulo: str = "", detalhar: bool = True):
     e = res["excesso"]
     print(f"  EXCESSO: {e['frames']}/{res['com_mao']} frames "
           f"({100 * e['pct']:.1f}%) com carta na tela que o quadro nao mostrou")
+    if e["frames"]:
+        print(f"    dos quais {e['congelado']} com o leitor CONGELADO "
+              f"(oclusao/quadro vazio: segurar a mao e o pedido) -> "
+              f"{100 * e['pct_vivo']:.1f}% com o leitor vivo")
     o = res["ordem"]
     print(f"  ORDEM errada: {o['errada']}/{o['comparaveis']} frames "
           f"({100 * o['pct']:.1f}%)")
