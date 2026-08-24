@@ -178,6 +178,41 @@ dentro da métrica — a mesma decisão do `ultimo_leque`. Os números de hoje:
 O total NÃO foi descontado de propósito: mudar o denominador em silêncio esconde, e foi
 exatamente o excesso cru que denunciou os 17 cartas. Publicar os dois deixa escolher.
 
+**Quem perde a carta, exatamente** (2026-08-24, sem vídeo — o `sessao.jsonl` guarda as detecções
+BRUTAS, que são o que o modelo entregou AO VIVO, então comparar com `ultimo_leque` responde sem
+depender do `mao.avi` MJPG). Dos pares "a tela mostra / o leque não tem", com o leitor vivo:
+
+| gravação | pares | o MODELO não entregou | cortada no `hand_instances` | cortada no `_so_o_leque` |
+|---|---|---|---|---|
+| 20/08 19:43 | 6.776 | 83% | **17%** | 0% |
+| 19/08 16:22 | 2.096 | 64% | **36%** | 0% |
+| 19/08 15:50 | 4.095 | 67% | **30%** | 2% |
+| 11/08 | 5.060 | 89% | **8%** | 3% |
+
+Ou seja: de 8% a 36% das vezes **o modelo entregou a carta acima do limiar e o pipeline a
+descartou**. E em **100%** desses casos quem a absorveu tinha rótulo DIFERENTE — são dois palpites
+para o mesmo lugar, e o `hand_instances` fica com o mais confiante. A vantagem de quem sobrevive é
+mínima: mediana +0,07 de confiança, p10 +0,01. É uma decisão de UM frame, tomada por moeda,
+antecipando sem volta o voto ponderado no tempo que o `FanReader` existe para fazer — a mesma
+crítica que este arquivo faz ao `agnostic_nms`.
+
+Confirmado por caminho independente: re-detectando do vídeo só os frames do buraco, a conta deu 18%
+"o modelo viu e o pipeline cortou" contra os 17% medidos nas detecções gravadas. E ali também se
+mediu que **69% das perdas são cegueira real** — a carta não aparece nem baixando o limiar a 0,05,
+que é oclusão física (dedo, carta atrás de carta), não erro de classe.
+
+**Hipótese REFUTADA na mesma medição: o raio de fusão NÃO está comendo a vizinha.** A suspeita era
+boa — `MERGE_FACTOR = 0,35` foi calibrado com caixa de 44 px (raio ~15 px) e hoje a menor dimensão
+da caixa é de 86-108 px, o que dá raio de 30-38 px. Mas o espaçamento entre vizinhas subiu junto
+(p05 de 44 a 59 px): só **0,0-0,3%** dos pares de vizinhas cai dentro do raio mediano. O leque
+aproximou-se da câmera e ampliou as duas grandezas na mesma proporção.
+
+**Fica em aberto, e é o próximo fio:** a distância entre a carta cortada e quem a absorveu é
+BIMODAL — p50 de 2,0-2,7 px em 20/08 e 11/08 (mesmo canto mesmo, e aí a fusão está certa e o erro
+é de classe) contra p50 de 46-48 px em 19/08 16:22 e 15:50, que é a borda do raio das caixas
+grandes e já encosta no p05 do espaçamento. As duas populações pedem consertos diferentes e a
+medição atual não as separa por causa, só por distância.
+
 Alvo que isto aponta, e que não custa tempo de jogo: os frames em que a carta da ponta é detectada
 com **0,34-0,59 de confiança** logo antes de sumir são exatamente o dado difícil que o modelo
 precisa, e o rótulo deles sai da POSIÇÃO no leque como no `extrai_gravacao.py`. Hoje aquele script
