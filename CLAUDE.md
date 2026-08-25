@@ -44,20 +44,23 @@ O que veio de graça: **o atraso era quase todo seguro para o EVENTO**. Um event
 histórico para sempre, uma mão exibida errada se corrige no frame seguinte — por isso o
 `lock_frames` podia cair de 60 para 20 sem custar acerto (a varredura está no `config.py`).
 
-### Próximo alvo (medido em 2026-08-24, e ataca-se sem webcam)
+### Próximo alvo (2026-08-25): o buraco é do MODELO, e o dado para tapá-lo já está em disco
 
-**O `hand_instances` descarta carta que o modelo ENTREGOU acima do limiar** — 8% a 36% de todas as
-perdas da tela, dependendo da gravação. Em 100% dos casos quem a absorve tem rótulo DIFERENTE no
-mesmo lugar e vence por +0,07 de confiança na mediana (p10 +0,01): é uma decisão de UM frame,
-tomada por moeda, antecipando sem volta o voto ponderado no tempo que o `FanReader` existe para
-fazer. É a mesma crítica que este arquivo já faz ao `agnostic_nms`, um estágio antes.
+O alvo que estava aqui — *"o `hand_instances` descarta carta que o modelo ENTREGOU"* — foi
+**implementado, medido nas seis gravações e REPROVADO**. O fato continua verdadeiro; o conserto
+proposto não move a nota. Mecanismo e números: "Deixar os dois palpites do mesmo canto votarem".
 
-A ideia é deixar os dois palpites do mesmo canto chegarem ao voto do leitor em vez de matar um por
-frame. **É mexida delicada**: a regra de "UMA detecção por vaga" (2026-08-04) existe por um motivo
-medido, e desfazê-la sem cuidado traz de volta o empate técnico entre dois rótulos na mesma vaga.
-Roda inteira contra as seis gravações em disco, sem custar tempo de jogo.
+O que sobra é o outro pedaço da mesma medição, agora nas seis gravações e com o leitor VIVO:
+**64% a 89% das cartas que a TELA mostra e o LEQUE não tem são carta que o modelo não entregou
+naquele frame** — nem no leque, nem fora dele, nem como palpite perdedor da fusão. É a cegueira
+que este arquivo já descreve em "Onde o modelo perde a carta": buracos de 1,6 s (mediana) a 5 s,
+60-88% deles nas PONTAS do leque, sempre precedidos de confiança já degradada (p10 0,34-0,47
+contra 0,82-0,88 da base).
 
-Números, caminhos de confirmação e o que ficou em aberto: "De que é feito o EXCESSO que sobra".
+O caminho não custa tempo de jogo nem webcam, e já está escrito no fim daquela seção:
+`training/extrai_gravacao.py` hoje seleciona os frames em que a conta FECHA, e o dado difícil está
+nos frames em que ela **quase** não fecha — a carta da ponta lida a 0,34-0,59 nos instantes antes
+de sumir. O rótulo continua saindo da POSIÇÃO no leque, como já sai.
 
 ### O que a métrica diz hoje, e o número que ninguém tinha medido (2026-08-20)
 
@@ -207,9 +210,13 @@ depender do `mao.avi` MJPG). Dos pares "a tela mostra / o leque não tem", com o
 Ou seja: de 8% a 36% das vezes **o modelo entregou a carta acima do limiar e o pipeline a
 descartou**. E em **100%** desses casos quem a absorveu tinha rótulo DIFERENTE — são dois palpites
 para o mesmo lugar, e o `hand_instances` fica com o mais confiante. A vantagem de quem sobrevive é
-mínima: mediana +0,07 de confiança, p10 +0,01. É uma decisão de UM frame, tomada por moeda,
-antecipando sem volta o voto ponderado no tempo que o `FanReader` existe para fazer — a mesma
-crítica que este arquivo faz ao `agnostic_nms`.
+mínima: mediana +0,07 de confiança, p10 +0,01.
+
+**A conclusão que estava aqui — "é uma decisão de UM frame, tomada por moeda, antecipando o voto
+ponderado no tempo" — foi medida em 2026-08-25 e é FALSA.** Os +0,07 são viés sistemático, não
+sorteio: deixar os dois palpites votarem dá o mesmo campeão e a mesma tela. Ver "Deixar os dois
+palpites do mesmo canto votarem: REPROVADO". Os números acima continuam valendo; o que caiu foi a
+leitura deles.
 
 Confirmado por caminho independente: re-detectando do vídeo só os frames do buraco, a conta deu 18%
 "o modelo viu e o pipeline cortou" contra os 17% medidos nas detecções gravadas. E ali também se
@@ -233,6 +240,80 @@ com **0,34-0,59 de confiança** logo antes de sumir são exatamente o dado difí
 precisa, e o rótulo deles sai da POSIÇÃO no leque como no `extrai_gravacao.py`. Hoje aquele script
 seleciona frames em que a conta fecha; o que falta é selecionar os frames em que ela quase não
 fecha.
+
+#### Deixar os dois palpites do mesmo canto votarem: REPROVADO (2026-08-25)
+
+Era o "próximo alvo" desde 24/08. Foi implementado inteiro e medido: o `hand_instances` passou a
+guardar o palpite perdedor da fusão como `alternativas` do canto, e o `FanReader` passou a somar
+o FRAME inteiro no total de cada rótulo, em vez de só o vencedor. A regra de "UMA detecção por
+vaga" ficou intacta — o que muda não é quem casa com a vaga, é quanto do frame chega à votação.
+
+Antes de medir a nota, a conta de quem some, agora nas SEIS gravações e reproduzindo os números de
+24/08 por outro caminho (a carta exibida que falta no leque, com o leitor vivo):
+
+| gravação | pares | **era palpite perdedor da fusão** | estava no quadro, fora do leque | o modelo não entregou |
+|---|---|---|---|---|
+| 11/08 | 5.027 | 7,7% | 3,3% | **89,0%** |
+| 12/08 | 12.709 | 17,5% | 4,7% | **77,9%** |
+| 19/08 15:50 | 4.101 | 30,3% | 2,2% | **67,5%** |
+| 19/08 16:22 | 2.096 | 36,3% | 0,0% | **63,6%** |
+| 20/08 17:42 | 9.490 | 27,8% | 4,1% | **68,1%** |
+| 20/08 19:43 | 6.776 | 16,9% | 0,0% | **83,1%** |
+
+E a nota, com esses 8-36% chegando à votação:
+
+| gravação | contradição | excesso |
+|---|---|---|
+| 11/08 | 10,0% → 10,0% | 7,6% → 7,6% |
+| 12/08 | 14,5% → **15,0%** | 6,5% → **7,1%** |
+| 19/08 15:50 | 10,9% → 10,9% | 8,4% → 8,4% |
+| 19/08 16:22 | 8,0% → 8,0% | 3,9% → 3,9% |
+| 20/08 17:42 | 13,9% → **14,7%** | 5,7% → **6,0%** |
+| 20/08 19:43 | 12,8% → 12,8% | 7,8% → 7,8% |
+
+Nada em quatro, um pouco PIOR em duas. Foi retirado do código.
+
+**Por que não funciona, e é aqui que o diagnóstico de 24/08 estava errado.** Ele dizia que a fusão
+é "uma decisão de UM frame, tomada por moeda". Não é moeda: é viés SISTEMÁTICO. O vencedor ganha
+por +0,07 na mediana **em todo frame**, então somar os dois ao longo da janela dá o mesmo campeão
+que somar só os vencedores — a votação temporal reproduz a decisão que ela deveria arbitrar. E
+quando a disputa é de fato apertada, o vencedor ALTERNA entre frames, e aí os dois rótulos já
+chegavam à votação pelo caminho antigo, um frame de cada vez. O que a fusão descartava era só a
+MARGEM, e a margem não decide nada.
+
+O custo aparece nas duas gravações que pioraram: com a alternativa votando, o rótulo já
+estabelecido na vaga é sustentado por mais tempo (a histerese de `win_margin` protege quem tem
+votos), e a tela demora mais a aceitar a leitura nova — que é exatamente o que a contradição
+cobra.
+
+Corolário que vale para o `agnostic_nms`: a crítica a ele continua de pé pelo outro motivo (num
+leque apertado ele suprime a carta VIZINHA legítima, que é outra posição), mas o argumento "ele
+antecipa o voto temporal" acabou de ser medido no estágio seguinte e não se sustentou.
+
+#### O raio de fusão é um QUADRADO, e trocá-lo por um círculo é indiferente
+
+Medido junto, e é um defeito real de implementação que simplesmente não custa nada hoje. O
+`MERGE_FACTOR` foi calibrado como RAIO ("dá raio de ~15 px, abaixo dos 19 px do pior
+espaçamento"), mas o código compara `abs(dx) < thr and abs(dy) < thr` — um quadrado, cuja diagonal
+alcança `thr × 1,41`. Já na calibração original isso passava dos 19 px; hoje, com caixa de
+86-108 px, o `thr` mediano vai a 24-45 px e a quina do quadrado chega a 34-63 px, dentro da
+distribuição do espaçamento entre vizinhas (p05 44-59 px).
+
+O perfil das detecções que a fusão mata, nas seis gravações, mostra as duas populações separadas:
+
+- **84-97% delas têm rótulo DIFERENTE** do vencedor, e a distância é bimodal — p50 de 0,5 a 3,5 px
+  em quatro gravações (mesmo canto, dois palpites) contra p50 de 47 px em 19/08 16:22 (a quina do
+  quadrado);
+- as de rótulo IGUAL — o caso que a fusão existe para tratar — estão **97,5-100% dentro do
+  círculo**. Ou seja, trocar o quadrado pelo círculo não desfaz nada do que a regra faz de
+  propósito; ela só deixa de matar de 4,6% a 67,8% das de rótulo diferente, conforme a gravação.
+
+Só que a nota fica igual: contradição 10,0/14,5/10,9/8,0/13,9/12,8% → 10,1/14,7/10,3/8,1/12,9/12,8%
+e excesso 7,6/6,5/8,4/3,9/5,7/7,8% → 7,6/6,9/7,9/3,1/4,7/7,7% — melhora em três gravações, piora em
+duas. **Não foi trocado**: mudar comportamento sem ganho medido é risco puro. Fica registrado
+porque o risco é latente — se o leque se aproximar mais da câmera, ou o espaçamento apertar, a
+quina do quadrado volta a comer vizinha e o comentário do `MERGE_FACTOR` vai continuar dizendo
+"raio".
 
 ### O modelo inventa cartas no AMBIENTE, e desde 19/08 elas chegam à tela
 
