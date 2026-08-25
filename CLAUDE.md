@@ -1153,6 +1153,39 @@ medição sustenta é a queda da PERDA, que é o alvo e foi medida em duas grava
 Rollback: `copy models\cards_backup_10.pt models\cards.pt`. (Este é o modelo em produção —
 `cards_backup_11.pt` é cópia dele; ver "Três coisas que NÃO melhoraram o modelo".)
 
+### O primeiro número AO VIVO do modelo novo (2026-08-25 19:30)
+
+Partida gravada no dia com o modelo publicado, 12,1 min a **37 fps** — e é a única medição desta
+sessão que não vem de vídeo MJPG re-detectado.
+
+| | hoje | 11/08 | 12/08 | 19/08 15:50 | 19/08 16:22 | 20/08 17:42 | 20/08 19:43 |
+|---|---|---|---|---|---|---|---|
+| atraso até a tela | 0,84 s | 0,70 | 0,54 | 0,86 | 0,88 | 0,51 | 0,52 |
+| **contradição** | **7,9%** | 10,0% | 14,5% | 10,9% | 8,0% | 13,9% | 12,8% |
+| excesso | 6,4% | 7,6% | 6,5% | 8,4% | 3,9% | 5,7% | 7,8% |
+| ordem errada | **0,3%** | 2,1% | 1,6% | 0,1% | 0,4% | 0,5% | 1,0% |
+| cobertura | 96,2% | 99,5% | 99,4% | 94,6% | 98,2% | 99,4% | 99,2% |
+
+Contradição é a **segunda menor já medida ao vivo** (só 16:22 é menor) e a menor entre as partidas
+"normais"; a ordem está entre as melhores. Perda de detecção: **2,90%**.
+
+**Três ressalvas, e a primeira é séria:**
+
+- **A amostra é fina.** Só **15,3% da gravação tem carta no quadro** — 4.126 frames, ~111 s de
+  jogo em 12 min de gravação, com 26 trocas de mão. As outras partidas têm 4-16 mil frames com
+  carta. Nenhuma conclusão fina sobrevive a isso.
+- **Comparar partidas diferentes é fraco**: leque diferente, luz diferente, jogo diferente. A
+  tabela é contexto, não prova.
+- **Os 2,90% de perda NÃO se comparam** com os 3,98% e 4,97% medidos nos holdouts: aqueles vieram
+  de vídeo re-detectado e de OUTRAS partidas. O repositório já avisa que os dois caminhos não são
+  comparáveis; aqui vale a mesma regra.
+
+A cobertura de 96,2% é a segunda pior da tabela: 158 frames com carta no quadro e nada na tela.
+Vale olhar se um dia isso incomodar.
+
+E o velho conhecido continua: **24 dos 42 buracos de detecção são do 4♠** — a mesma carta que
+dominou as perdas em 20/08, e a mesma família A↔4 que o projeto persegue desde julho.
+
 ### Três coisas que NÃO melhoraram o modelo em 2026-08-25, e a variância que as explica
 
 Depois do retreino que funcionou, tentei mais três coisas em disco, sem webcam. **Nenhuma passou**,
