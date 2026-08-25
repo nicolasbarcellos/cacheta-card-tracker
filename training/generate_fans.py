@@ -61,6 +61,30 @@ NAME_TO_ID = {c: i for i, c in enumerate(ALL_CODES)}
 RANKS_FRACOS = {"A", "3", "4", "5", "8"}
 PESO_RANK_FRACO = 2.5
 
+# ABERTURA do leque, em graus. É constante de módulo para poder ser VARRIDA sem
+# editar o arquivo: a grandeza que ela controla — quão girado o índice da PONTA
+# chega ao modelo — é medível nos RÓTULOS gerados e comparável com o real.
+#
+# O teto subiu de 150 para 180 em 2026-08-25, e o número saiu de medição, não de
+# opinião. A grandeza é a proporção largura/altura da caixa do índice da PONTA
+# (normalizada; os dois canvas são 16:9, então comparam direto):
+#
+#   gerado (25,150): p50 0,53 · 16,3% das pontas acima de 0,80
+#   gerado (25,180): p50 0,58 · 25,7%
+#   gerado (40,180): p50 0,65 · 32,2%
+#   REAL, as partidas gravadas: p50 0,59-0,69 · 18-38%
+#
+# Ou seja, a faixa antiga produzia a ponta MENOS girada do que ela chega ao
+# vivo, e é na ponta que o modelo perde a carta (60-88% dos buracos). O piso
+# ficou em 25 de propósito: a faixa precisa cobrir o leque FECHADO também, que
+# acontece tanto quanto o aberto. Rótulos por imagem não mudam (8,7 → 8,5), ou
+# seja a abertura maior não está escondendo índice.
+#
+# Cuidado ao mexer: as sessões de captura deliberada (`datasets/local`,
+# `holdout-ranks`) têm ponta MUITO mais chata (p50 0,38-0,49) do que as partidas
+# gravadas. Quem manda é a partida — é a condição em que o produto roda.
+ABERTURA = (25, 150)
+
 
 def escolhe_codigos(templates, n):
     """Sorteia n cartas distintas, com peso maior para os ranks fracos."""
@@ -245,7 +269,7 @@ def compose_fan(templates, bgs):
     # quase em pé; ao vivo, as das pontas chegavam deitadas ou de cabeça para
     # baixo e simplesmente não eram detectadas — 3 detecções para 9 cartas.
     # A faixa cobre o leque fechado E o aberto, porque os dois acontecem.
-    total_spread = random.uniform(25, 150)
+    total_spread = random.uniform(*ABERTURA)
     frac_spread = (total_spread - 25) / 125
 
     # ESCALA: o leque tem de PREENCHER o quadro, como preenche ao vivo. Medido

@@ -1150,7 +1150,70 @@ extração; não serve para dizer se o modelo melhorou. Está escrito no docstri
 rodadas de treino — separá-los exigiria retreinar sem o dado difícil, e não foi feito. O que a
 medição sustenta é a queda da PERDA, que é o alvo e foi medida em duas gravações independentes.
 
-Rollback: `copy models\cards_backup_10.pt models\cards.pt`.
+Rollback: `copy models\cards_backup_10.pt models\cards.pt`. (Este é o modelo em produção —
+`cards_backup_11.pt` é cópia dele; ver "Três coisas que NÃO melhoraram o modelo".)
+
+### Três coisas que NÃO melhoraram o modelo em 2026-08-25, e a variância que as explica
+
+Depois do retreino que funcionou, tentei mais três coisas em disco, sem webcam. **Nenhuma passou**,
+e o motivo da última vale mais que as três.
+
+**(a) Segunda rodada de dado difícil: +14 frames, e o poço secou.** Afrouxando os filtros (uma
+amostra a cada 0,3 s, 12 por carta), os candidatos foram de 281 para 662 — mas só 14 sobreviveram à
+auditoria, contra 70 da primeira rodada. A razão está no próprio contador: o descarte "o vídeo
+detectou a carta" saltou de 12% para **30-46%** dos candidatos. É o modelo novo já achando o que o
+velho perdia — a extração se auto-limita, o que é bom sinal e mau rendimento.
+
+**(b) A PONTA do leque no gerador: o vão existia e fechá-lo não muda nada.** Medido nos rótulos, a
+proporção largura/altura da caixa do índice da PONTA (normalizada; os dois canvas são 16:9):
+
+| | ponta p50 | ponta > 0,80 |
+|---|---|---|
+| sintético `ABERTURA=(25,150)` | 0,54 | 15,3% |
+| sintético `ABERTURA=(25,180)` | **0,60** | **26,6%** |
+| REAL, partidas gravadas | 0,59-0,69 | 18-38% |
+
+O gerador produzia a ponta MENOS girada do que ela chega ao vivo, e é na ponta que o modelo perde a
+carta (60-88% dos buracos). A hipótese era boa e o parâmetro fechou o vão na medida certa, sem
+custar rótulo por imagem (8,7 → 8,5; 97,4% dos índices rotulados). **E não mudou a perda de
+detecção**: com a abertura nova, 6,00% e 3,68%; com a antiga, 6,21% e 3,67% — a mesma coisa. A
+`ABERTURA` ficou como constante de módulo (era número solto no meio da função), com os números no
+comentário, para a próxima pessoa não refazer a varredura.
+
+**(c) O fantasma do canto invertido: REPROVADO pela terceira vez, agora com o diagnóstico certo.**
+O CLAUDE.md dizia que o conserto do `extrai_fantasmas.py` era **geometria** — o canto invertido fica
+fora da fileira de índices, a leitura errada de uma carta real cai em cima dela. A geometria de
+fato separa (nas sobras, 25-30% caem na fileira e o resto fora, e o sinal inverte junto com o leque
+de cabeça para baixo de 19/08 16:22, que é o que se espera do mecanismo). Só que **olhando os
+recortes, a população de fora da fileira não é canto invertido**: são (i) pips e arte no MEIO de uma
+carta virada — o 4♦ que o modelo lê na figura do K♦ — e (ii) **cartas de verdade fora do leque**,
+sendo compradas, descartadas ou na mesa, cujo índice é legítimo. Deixar (ii) sem rótulo é
+exatamente o envenenamento que este arquivo documenta. Não foi extraído nada.
+
+O que separaria as duas, e não foi feito: margem de tempo em volta das jogadas (a carta fora do
+leque aparece perto de uma jogada) mais um discriminador de "pip no meio da carta" × "índice no
+canto". Sem isso, não use aquele script.
+
+**A lição de método, e ela recalibra tudo o que veio antes: a VARIÂNCIA entre rodadas de treino é
+do tamanho dos efeitos que se está caçando.** Duas rodadas que diferem só na AMOSTRA sintética
+(mesma distribuição, mesmo dado real) deram 6,00% e 6,21% de perda na mesma gravação — 0,21 ponto
+de diferença sem nenhuma mudança de conteúdo. Por isso:
+
+| modelo | 19/08 16:22 | 11/08 | média |
+|---|---|---|---|
+| `cards_backup_10` (antes do dado difícil) | 5,69% | 4,20% | 4,95% |
+| **`cards_backup_11` (+70 difíceis) — PUBLICADO** | **4,97%** | **3,98%** | **4,47%** |
+| `cards_backup_12` (+14, abertura 180) | 6,00% | 3,68% | 4,84% |
+| rodada 4 (+14, abertura 150) | 6,21% | 3,67% | 4,94% |
+
+As três últimas têm classe idêntica (99,5% em 11/08, 98,5-98,6% no `holdout-ranks`, 0 carta
+inventada), então o critério é a perda — e o `backup_11` é o único que melhorou nas DUAS gravações,
+que é o teste que este repositório já exige de qualquer conclusão ("uma partida só teria dado a
+conclusão oposta"). **Foi para ele que o modelo voltou.**
+
+Corolário para a próxima sessão: **diferença de menos de ~0,3 ponto de perda entre dois retreinos
+não é resultado**, é ruído de rodada. Para afirmar um ganho menor que isso são precisas várias
+sementes, ou gravações novas.
 
 ### O conjunto de validação real era CEGO a 5 dos 13 valores (2026-08-20)
 
