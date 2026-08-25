@@ -61,9 +61,9 @@ contra 0,82-0,88 da base).
 frames em que UMA vaga do leitor perdeu a detecção, re-detecta do vídeo a 0,05 e só rotula quando o
 índice está mesmo visível — 70 frames auditados nas quatro gravações com vídeo. Ver "Dado DIFÍCIL".
 
-**O que falta é o retreino e a medição dele**: se a perda nas PONTAS cai, sem custar carta
-inventada (`eval_negativos.py`) nem classe (`eval_classes.py` contra o holdout de 11/08, que
-continua fora de tudo isto de propósito).
+**Feito e medido em 25/08**: a perda de detecção caiu **5,69% → 4,97%** (19/08 16:22) e
+**4,20% → 3,98%** (11/08), as duas gravações fora do treino, sem custar classe nem carta inventada.
+Ver "Retreino de 2026-08-25".
 
 ### O que a métrica diz hoje, e o número que ninguém tinha medido (2026-08-20)
 
@@ -1102,9 +1102,55 @@ caixa marcada dentro do recorte** (senão lê-se o glifo da vizinha e aprova-se 
 Saída em `training/datasets/real/<gravação>-dificeis/`, que é onde o `finetune_local.py` já olha —
 com a repetição do real e o `--holdout` por nome de pasta, sem mudar uma linha lá.
 
-**Ainda não foi treinado.** São 70 frames auditados (~630 rótulos, dos quais 70 são a carta
-recuperada). O que falta medir depois do retreino: se a perda de detecção nas PONTAS diminui, sem
-custar carta inventada (`eval_negativos.py`) nem classe (`eval_classes.py` no holdout de 11/08).
+**Treinado em 2026-08-25**, com os 70 frames auditados (~630 rótulos, 70 deles a carta
+recuperada): a perda de detecção caiu 5,69% → 4,97% e 4,20% → 3,98% nas duas gravações fora do
+treino, sem regressão em classe nem em carta inventada. Ver "Retreino de 2026-08-25".
+
+### Retreino de 2026-08-25: a carta perdida volta ~13% mais depressa
+
+Primeiro treino com o dado difícil (`extrai_dificeis.py`): 2.988 imagens, 1.133 amostras reais
+(38%), 55 negativos (1,8%), 12 épocas, 1280 px, batch 3. Holdouts escolhidos para sobrar com que
+medir: **11/08** (o conjunto de validação real) e **19/08 16:22-dificeis** — como as gravações de
+19-20/08 nunca entraram por outra via, 16:22 ficou **inteira** fora do treino.
+
+**A nota do alvo é a TAXA DE PERDA DE DETECÇÃO**: das vagas já estabelecidas no leitor, quantas
+ficam sem detecção no frame. Publicada pelo `extrai_dificeis.py --so-analise --dets`.
+
+| gravação (fora do treino) | perda — antigo | perda — novo | detecções/frame |
+|---|---|---|---|
+| 19/08 16:22 | 5,69% | **4,97%** | 8,87 → 8,86 |
+| 11/08 | 4,20% | **3,98%** | 8,84 → 8,85 |
+
+Cai nas duas (−13% e −5% relativos) **sem detectar mais nada**: as detecções por frame ficam
+iguais, então não é o modelo ficando solto e enchendo o quadro de caixa.
+
+Sem regressão em nada que já se media:
+
+| | antigo (`cards_backup_10.pt`) | novo |
+|---|---|---|
+| classe correta — holdout real 11/08 | 99,4% | **99,5%** |
+| índices detectados — 11/08 | 100,0% | 100,0% |
+| classe correta — `holdout-ranks` | 98,0% | **98,6%** |
+| naipe na MESMA COR — `holdout-ranks` | 1,2% (16) | **0,8% (10)** |
+| cartas inventadas — `negativos-holdout` | 0 | **0** |
+
+**A nota da TELA quase não se move** — 16:22 contradição 10,3% → 9,5%, 11/08 8,7% → 8,9%, excesso e
+cobertura iguais nas duas. E isso é o esperado, não decepção: a medição de 24/08 já tinha mostrado
+que **a tela estava certa enquanto o modelo falhava**, porque o `StableHand` segura a carta durante
+o buraco. Consertar o modelo aparece na perda de detecção, não na tela — e a tela é o que o usuário
+vê.
+
+**Instrumento que este retreino REPROVOU: a contagem de BURACOS.** Ela exige EXATAMENTE uma vaga
+perdida, então melhorar as outras vagas a faz SUBIR. Nas duas gravações ela foi 190→202 e 197→167 —
+direções opostas — enquanto a taxa de perda caiu nas duas. Serve para dimensionar o rendimento da
+extração; não serve para dizer se o modelo melhorou. Está escrito no docstring de
+`acha_candidatos`, onde quem for usá-la vai ler.
+
+**Ressalva honesta**: os ganhos de CLASSE (+0,1 e +0,6 pontos) não são separáveis de variação entre
+rodadas de treino — separá-los exigiria retreinar sem o dado difícil, e não foi feito. O que a
+medição sustenta é a queda da PERDA, que é o alvo e foi medida em duas gravações independentes.
+
+Rollback: `copy models\cards_backup_10.pt models\cards.pt`.
 
 ### O conjunto de validação real era CEGO a 5 dos 13 valores (2026-08-20)
 

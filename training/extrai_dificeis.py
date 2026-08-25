@@ -153,15 +153,28 @@ def tinta_glifo(frame, box) -> float:
 def acha_candidatos(registros, intervalo, max_misses, max_por_carta):
     """Frames em que UMA vaga do leitor ficou sem detecção. Não abre o vídeo.
 
-    Devolve (candidatos, buracos), onde cada candidato traz a vaga perdida e o
-    retrato das outras vagas naquele instante — é com ele que a re-detecção
+    Devolve (candidatos, buracos, perda), onde cada candidato traz a vaga perdida
+    e o retrato das outras vagas naquele instante — é com ele que a re-detecção
     confere se o vídeo mostra o mesmo leque que a sessão gravada mostrou.
+
+    `perda` é a TAXA DE PERDA DE DETECÇÃO: das vagas já estabelecidas, quantas
+    ficam sem detecção no frame. É a nota do alvo, e vale para ela o mesmo que
+    para a nota da tela: com `--dets`, comparar dois modelos no MESMO vídeo.
+
+    **Não use a contagem de BURACOS para isso**, e a razão é medida: ela exige
+    EXATAMENTE uma vaga perdida, então melhorar as outras vagas faz o contador
+    SUBIR. Comparando o modelo de 20/08 com o de 25/08 nas duas gravações fora
+    do treino, os buracos foram 190→202 numa e 197→167 na outra — direções
+    opostas — enquanto a taxa de perda caiu nas duas (5,69%→4,97% e
+    4,20%→3,98%). O contador serve para dimensionar o rendimento da extração,
+    não para dizer se o modelo melhorou.
     """
     tracker = GameTracker(hand_size=config.hand_size)
     leitor, trava = build_pipeline()
     candidatos = []
     buracos = Counter()
     por_carta: Counter = Counter()
+    vagas_tot = vagas_perdidas = 0
     ultimo = -9e9
     for rec in registros:
         if rec.get("t") != "frame":
@@ -175,6 +188,8 @@ def acha_candidatos(registros, intervalo, max_misses, max_por_carta):
         if len(vagas) < MIN_VAGAS:
             continue
         perdidas = [v for v in vagas if v["misses"] >= 1]
+        vagas_tot += len(vagas)
+        vagas_perdidas += len(perdidas)
         if len(perdidas) != 1:
             continue
         perdida = perdidas[0]
@@ -203,7 +218,7 @@ def acha_candidatos(registros, intervalo, max_misses, max_por_carta):
             "perdida": (perdida["x"], perdida["y"], perdida["label"]),
             "vagas": [(v["x"], v["y"], v["label"]) for v in vagas],
         })
-    return candidatos, buracos
+    return candidatos, buracos, (vagas_perdidas, vagas_tot)
 
 
 def casa_vagas(dets, vagas, match_dist):
@@ -243,14 +258,24 @@ def main():
     ap.add_argument("--so-analise", action="store_true",
                     help="conta os candidatos sem abrir o vídeo")
     ap.add_argument("--modelo", default=config.model_path)
+    ap.add_argument("--dets", type=Path,
+                    help="outro arquivo de deteccoes (ex.: de --redetectar). "
+                         "Com --so-analise, e como se compara quantos BURACOS "
+                         "dois modelos abrem no MESMO video")
     args = ap.parse_args()
 
-    registros = carrega(args.gravacao / "sessao.jsonl")
-    candidatos, buracos = acha_candidatos(registros, args.intervalo,
-                                          args.max_misses, args.por_carta)
-    print(f"{args.gravacao.name}: {sum(buracos.values())} buracos "
-          f"(uma vaga sozinha perdendo a deteccao), "
-          f"{len(candidatos)} frames candidatos")
+    origem = args.gravacao / "sessao.jsonl"
+    if args.dets:
+        origem = args.dets if args.dets.exists() else args.gravacao / args.dets
+    registros = carrega(origem)
+    candidatos, buracos, perda = acha_candidatos(
+        registros, args.intervalo, args.max_misses, args.por_carta)
+    perdidas, vagas = perda
+    print(f"{args.gravacao.name}: PERDA DE DETECCAO {perdidas}/{vagas} vagas "
+          f"estabelecidas = {100 * perdidas / max(vagas, 1):.2f}%")
+    print(f"  {sum(buracos.values())} buracos (uma vaga sozinha perdendo), "
+          f"{len(candidatos)} frames candidatos "
+          f"-- a contagem de buracos NAO mede modelo, ver acha_candidatos")
     for code, n in buracos.most_common(10):
         print(f"  {code}: {n} buracos")
     if args.so_analise or not candidatos:
