@@ -57,10 +57,13 @@ que este arquivo já descreve em "Onde o modelo perde a carta": buracos de 1,6 s
 60-88% deles nas PONTAS do leque, sempre precedidos de confiança já degradada (p10 0,34-0,47
 contra 0,82-0,88 da base).
 
-O caminho não custa tempo de jogo nem webcam, e já está escrito no fim daquela seção:
-`training/extrai_gravacao.py` hoje seleciona os frames em que a conta FECHA, e o dado difícil está
-nos frames em que ela **quase** não fecha — a carta da ponta lida a 0,34-0,59 nos instantes antes
-de sumir. O rótulo continua saindo da POSIÇÃO no leque, como já sai.
+**O extrator para isso já existe** (`training/extrai_dificeis.py`, feito no mesmo dia): ele pega os
+frames em que UMA vaga do leitor perdeu a detecção, re-detecta do vídeo a 0,05 e só rotula quando o
+índice está mesmo visível — 70 frames auditados nas quatro gravações com vídeo. Ver "Dado DIFÍCIL".
+
+**O que falta é o retreino e a medição dele**: se a perda nas PONTAS cai, sem custar carta
+inventada (`eval_negativos.py`) nem classe (`eval_classes.py` contra o holdout de 11/08, que
+continua fora de tudo isto de propósito).
 
 ### O que a métrica diz hoje, e o número que ninguém tinha medido (2026-08-20)
 
@@ -1036,6 +1039,72 @@ sabia produzir fundo escuro.
 `finetune_local.py` consome `datasets/negativos/` **sem repetir** (a repetição existe para o dado
 real não se diluir; negativo repetido só ensina o modelo a ter medo) e avisa acima de ~10% do
 treino, porque passar disso troca fantasma por carta perdida — e essa troca não aparece no mAP.
+
+### Dado DIFÍCIL: os frames em que o modelo PERDE a carta (`extrai_dificeis.py`, 2026-08-25)
+
+O `extrai_gravacao.py` exige contagem exata (`alinhado`), e com razão — carta não detectada desloca
+todos os rótulos seguintes. O efeito colateral é que **todo frame em que o modelo perdeu uma carta
+era descartado inteiro**, e são justamente esses que carregam o dado difícil. É o alvo que a
+medição de 25/08 apontou: 64-89% do que a tela mostra e o leque não tem é carta que o modelo não
+entregou.
+
+**Não precisa de gabarito**, e é o que faz o script rodar nas quatro gravações que ainda têm vídeo
+(as duas com gabarito estão fora: 11/08 é o conjunto de validação real e 12/08 já não tem
+`mao.avi`). Quem diz que carta é aquela é o **leitor**: a vaga do `FanReader` que ficou sem
+detecção tem rótulo estabelecido pela votação dos frames em que a carta FOI vista, e posição
+atualizada pelo `_estimate_shift` mesmo nos frames em que ela sumiu. Não é a circularidade do
+`auto_annotate.py`: lá o rótulo vinha do palpite do modelo NAQUELE frame; aqui o defeito que se
+conserta é PERDA DE DETECÇÃO, e o rótulo vem dos frames vizinhos.
+
+**A guarda que decide tudo: a caixa NÃO é interpolada.** Metade dos buracos é oclusão física
+(medido aqui: 50% dos candidatos; por outro caminho, em 24/08, 69% das perdas), e rotular isso
+ensinaria o modelo a enxergar índice que não está na imagem — o envenenamento que reprovou o
+`extrai_fantasmas.py` duas vezes. O frame é re-detectado a **0,05** e só entra se o modelo
+responder alguma coisa na posição prevista: aí o índice está visível, a caixa é real, e o que
+faltou foi confiança ou classe.
+
+De quebra, isso resolve um problema que não era óbvio: **as amostras são difíceis para o modelo de
+HOJE**, não para o que gravou a sessão. Um dos descartes é "o vídeo detectou a carta" (12% dos
+candidatos) — se o modelo atual acha a carta acima de 0,30 ali, o frame não é mais difícil e sai.
+
+Rendimento e auditoria nas quatro gravações:
+
+| gravação | buracos | candidatos | recuperados | sobrevivem à auditoria |
+|---|---|---|---|---|
+| 20/08 19:43 | 236 | 135 | 28 | **22** |
+| 20/08 17:42 | 296 | 154 | 41 | **28** |
+| 19/08 15:50 | 201 | 117 | 21 | **14** |
+| 19/08 16:22 | 188 | 99 | 8 | **6** |
+
+**A auditoria reprovou 29% (28 de 98), e todos os reprovados têm a MESMA assinatura**: a caixa
+contém **pip sem glifo** — dedo por cima, carta vizinha cobrindo, ou a caixa caiu no meio da carta
+(dois pips de ouros seguidos parecem índice). Duas tentativas de reduzir isso a número, ambas
+**MEDIDAS E REFUTADAS** nos mesmos 31 recortes:
+
+- **perguntar ao modelo com o recorte AMPLIADO** ("se há índice, ele o lê com folga a 4×"): em 28
+  dos 31 o modelo não detectou NADA, incluindo os que a auditoria aprovou. **O modelo é preso à
+  escala** — ampliar tira o índice da escala em que ele foi treinado. É um fato novo sobre o
+  modelo, e vale para qualquer ideia de "recortar e reclassificar".
+- **fração de PELE na metade do glifo**: não separa — os APROVADOS tinham 0,50-0,67 de pele contra
+  0,26-0,55 dos reprovados.
+
+O que virou guarda foi só o que a medição sustentou: **tinta na metade de cima da caixa**, relativa
+às vizinhas do mesmo frame (o pip fica embaixo e sobrevive ao estouro de luz; o glifo, não).
+Medido: 0,27, 0,33 e 0,27 contra 0,80 do próximo — vão limpo, e os três eram ilegíveis na
+auditoria. Mais o **teto por carta**: com a mão parada, 9 dos 21 recortes de 15:50 eram o MESMO J♥
+na mesma pose, e o `finetune_local.py` ainda repete o real até ~30% do treino.
+
+A folha de contato precisou de três correções para a auditoria ser possível, todas descobertas
+olhando: **entorno** (sem as vizinhas não se distingue "glifo coberto" de "glifo fora do recorte"),
+**proporção preservada** (o índice é estreito e alto; esticar para quadrado deforma o glifo) e **a
+caixa marcada dentro do recorte** (senão lê-se o glifo da vizinha e aprova-se rótulo errado).
+
+Saída em `training/datasets/real/<gravação>-dificeis/`, que é onde o `finetune_local.py` já olha —
+com a repetição do real e o `--holdout` por nome de pasta, sem mudar uma linha lá.
+
+**Ainda não foi treinado.** São 70 frames auditados (~630 rótulos, dos quais 70 são a carta
+recuperada). O que falta medir depois do retreino: se a perda de detecção nas PONTAS diminui, sem
+custar carta inventada (`eval_negativos.py`) nem classe (`eval_classes.py` no holdout de 11/08).
 
 ### O conjunto de validação real era CEGO a 5 dos 13 valores (2026-08-20)
 

@@ -619,6 +619,11 @@ class FanReader:
                 "y": round(s["y"]),
                 "n": len(s["votes"]),
                 "misses": s["misses"],
+                # o rótulo JÁ ESTABELECIDO (o que a histerese sustenta), que
+                # não é necessariamente o primeiro de `top`: é ele que a mão
+                # exibida usa, e é por ele que `extrai_dificeis.py` sabe QUE
+                # carta a vaga perdeu.
+                "label": s["label"],
                 "top": [(code, round(peso, 2))
                         for code, peso in totals.most_common(3)],
             })
