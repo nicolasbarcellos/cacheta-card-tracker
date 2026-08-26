@@ -1224,6 +1224,63 @@ acontece em certas montagens de leque, e cobra um prêmio pequeno nas outras. O 
 (mexer no `lock_frames`) era a errada. Quando o usuário descreve um sintoma, o trabalho é achar
 QUAL mecanismo o produz, não aplicar o botão que soa parecido.
 
+### O `9♠→9♣` NÃO era confusão de naipe — era a captura (2026-08-26)
+
+O último erro de classe aberto do projeto, e o único que não respondia a retreino nenhum
+(`9S→9C`: 9 erros antes do retreino de 20/08, 9 depois). O CLAUDE.md registrava a medição como
+**CONFUNDIDA**, porque nos dois leques capturados o 9♠ tinha paus dos dois lados. Resolvido com
+~15 min do usuário e quatro arranjos controlados, todos na mesma sessão, mesma luz, mesmo baralho.
+
+**As três hipóteses, e as três caíram:**
+
+| conjunto | 9♣ no leque | vizinho | aperto (vão/largura) | **erro no 9♠** |
+|---|---|---|---|---|
+| holdout antigo | sim | paus | 0,91 | **11,3%** (7/62) |
+| hoje **C** | não | **paus** | **0,87** | **0,0%** (0/52) |
+| hoje **D** | **sim** | **paus** | **0,91** | **0,0%** (0/53) |
+| hoje A | não | copas | 0,53 | 2,0% (1/51) |
+| hoje B | não | copas | 0,48 | 0,0% (0/53) |
+
+O arranjo C reproduziu a condição antiga (paus colado, mesmo aperto) e o D acrescentou o 9♣ no
+mesmo leque — a hipótese da gêmea. **Zero erro nos dois.** Em 209 frames de hoje o 9♠ foi lido
+errado UMA vez (0,5%), e essa uma tinha um COPAS ao lado, não um paus.
+
+**A causa é a GEOMETRIA daquela captura antiga.** A largura da caixa do índice do 9♠, dividida pela
+mediana das vizinhas do mesmo frame:
+
+| | largura relativa do 9♠ |
+|---|---|
+| holdout antigo | **0,73** (p10 0,64) — índice parcialmente COBERTO pela carta vizinha |
+| hoje A / B / C / D | 1,15 / 1,33 / 1,12 / 1,12 — índice inteiro |
+
+E dentro do próprio conjunto antigo, os erros são o subconjunto em que a caixa **incha**:
+
+| 9♠ no holdout antigo | largura relativa |
+|---|---|
+| lido certo (55 frames) | 0,73 |
+| lido **errado** (7 frames) | **0,98** (p90 1,08) |
+
+Ou seja: naquele leque o índice do 9♠ e o do 2♣ estão tão entrelaçados que a caixa ora pega só o
+9♠ (estreita, lê certo), ora **invade a vizinha** (larga) — e aí sai `9C` ou `2C`, que são
+exatamente os dois rótulos contidos no recorte. Confirmado a olho na folha de contato: nos frames
+com erro o "9" aparece mutilado, com um pip de paus dentro do mesmo recorte.
+
+**Três consequências:**
+
+1. **O modelo não tem defeito no 9♠.** Em captura bem formada ele acerta 99,5%, inclusive com paus
+   colado dos dois lados. O alvo "9♠→9♣" está encerrado, e não custou retreino nenhum.
+2. **O `holdout-ranks` mede errado nessa carta.** Ele é o conjunto de validação real do projeto, e
+   as 62 amostras do 9♠ dele estão com o índice 27% coberto — a "troca de naipe na mesma cor" que
+   ele publica está inflada por um defeito de captura, não de modelo. Ao julgar um retreino por
+   ele, desconte essa linha.
+3. **É a regra que o projeto já tinha, cobrada agora na captura e não só no jogo**: *o passo entre
+   cartas precisa EXPOR o índice*. O `ver_ordem.py` avisa quando o VÃO entre cantos fica pequeno —
+   mas não avisa quando a caixa de UM índice sai estreita em relação às vizinhas, que é o sinal de
+   índice coberto. É a guarda que falta ali.
+
+Os 209 frames dos quatro arranjos ficaram em `training/datasets/teste-9S/{A,B,C,D}` — dado real,
+rotulado pela ORDEM, e um conjunto de validação do 9♠ muito melhor que o antigo.
+
 ### A validação dos dois consertos, ao vivo e controlada (2026-08-26 14:12)
 
 Partida curta gravada logo depois dos dois consertos, 3,6 min a 41,8 fps, com **59,6% dos frames
