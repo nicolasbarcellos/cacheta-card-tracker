@@ -1215,6 +1215,51 @@ ordem, que é o que ela deve fazer.
 (mexer no `lock_frames`) era a errada. Quando o usuário descreve um sintoma, o trabalho é achar
 QUAL mecanismo o produz, não aplicar o botão que soa parecido.
 
+### As CARTAS FANTASMAS ao encaixar: a mão anterior ainda no ar (2026-08-26)
+
+O segundo defeito que o usuário relatou na mesma partida: *"quando eu ia colocar a carta no leque,
+ele já lia e criava várias cartas fantasmas e bugava"*. Achado na gravação, e o mecanismo é exato.
+
+**Primeiro, o que NÃO era.** A tela ficou 11,1 s exibindo 11 cartas, e o caso maior (10,3 s
+mostrando `10C` e `9C` juntos) **não era fantasma**: o `10C` foi detectado no quadro em 70% daqueles
+frames e passou pelo `_so_o_leque`. A tela estava certa. Perseguir isso teria sido conserto de
+defeito inexistente.
+
+**O fantasma de verdade é curto e é outro.** No instante em que a tela mostrou **12 cartas** (0,75 s),
+as três a mais — `10H`, `8D`, `JS` — foram detectadas em **ZERO frames** ali, com 17 a 47 *misses*.
+Eram vagas da mão ANTERIOR, ainda vivas porque `fan_expire = 48`. Numa troca de mão, as 9 velhas
+saem e as 9 novas entram, e por até 1,3 s a tela pode mostrar as duas.
+
+**O conserto separa duas coisas que estavam presas uma na outra**: `fan_expire` decide quando a vaga
+MORRE — e precisa continuar generoso, senão uma oclusão curta apaga a carta e o leque é relido do
+zero (é a regra de 2026-08-04) — mas até morrer a vaga era EXIBIDA. `fan_exibe_misses = 24` (metade
+do expire) tira da tela a vaga que sumiu há muito **sem matá-la**: os votos ficam, e a carta volta
+no primeiro frame em que reaparecer. Segurar a exibição é seguro porque quem protege contra piscada
+é o `StableHand`.
+
+| gravação | excesso antes | depois | contradição antes | depois | cobertura |
+|---|---|---|---|---|---|
+| 11/08 | 7,6% | **5,8%** | 10,0% | 10,1% | igual |
+| 12/08 | 6,5% | **3,1%** | 14,5% | 16,3% | igual |
+| 19/08 15:50 | 8,4% | **6,9%** | 10,9% | 12,3% | igual |
+| 19/08 16:22 | 3,9% | **1,4%** | 8,0% | 8,2% | igual |
+| 20/08 17:42 | 5,7% | **3,0%** | 13,9% | 14,6% | igual |
+| 20/08 19:43 | 7,8% | **4,7%** | 12,8% | 13,8% | igual |
+| 25/08 | 6,4% | **2,0%** | 7,9% | 8,6% | igual |
+| **26/08 (a do relato)** | 6,0% | **2,2%** | 9,5% | 9,5% | igual |
+
+Excesso cai em TODAS (6,5% → 3,6% na média, −45%) e a cobertura é idêntica em todas. O custo é a
+contradição subir ~0,8 ponto na média: a carta que pisca por mais de 24 frames demora ~0,5 s a mais
+para voltar, porque precisa reconquistar o `lock_frames`. 24 é o fundo da varredura — 32 acha menos
+fantasma, 16 já começa a piscar a tela (trocas 25 → 29).
+
+**As duas hipóteses do usuário sobre o CONSERTO foram testadas e recusadas** (a observação estava
+certa, o botão é que era outro): `lock_frames` de 20 a 48 não mexe no vaivém e piora tudo;
+`fan_min_appear` de 10 a 25 troca 0,5 ponto de excesso por 2,4 de contradição.
+
+Guardado por `test_vaga_que_sumiu_ha_muito_sai_da_TELA_sem_morrer` — que verifica os dois lados: a
+carta sai da tela E volta no primeiro frame em que reaparece.
+
 ### O primeiro número AO VIVO do modelo novo (2026-08-25 19:30)
 
 Partida gravada no dia com o modelo publicado, 12,1 min a **37 fps** — e é a única medição desta

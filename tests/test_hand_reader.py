@@ -636,3 +636,54 @@ def test_gemeas_de_verdade_sobrevivem_ao_teto_por_codigo():
     for _ in range(10):
         r.update(fan(("AS", 100), ("AS", 300), ("2H", 500)))
     assert r.cards.count("AS") == 2
+
+
+def test_vaga_que_sumiu_ha_muito_sai_da_TELA_sem_morrer():
+    """Separar "parar de exibir" de "esquecer" — foi o usuário quem viu.
+
+    Jogando em 2026-08-26 ele relatou que ao encaixar uma carta a tela "criava
+    várias cartas fantasmas". Medido na gravação: num instante de troca de mão a
+    tela mostrou 12 cartas, e as três a mais tinham sido detectadas em ZERO
+    frames ali — eram vagas da mão ANTERIOR, com 17 a 47 misses, ainda vivas
+    porque `fan_expire` é 48.
+
+    `fan_expire` precisa continuar generoso: é ele que faz uma oclusão curta não
+    apagar a carta nem obrigar a reler o leque do zero. O que não precisava
+    estar preso a ele era a EXIBIÇÃO. Medido nas oito gravações, cortar a
+    exibição em 24 misses derruba o excesso de 6,5% para 3,6% em média, com a
+    cobertura idêntica em todas.
+    """
+    r = FanReader(min_appear=3, expire=48, exibe_misses=10)
+    for _ in range(6):
+        r.update(fan(("AS", 100), ("2H", 200), ("3D", 300)))
+    assert r.cards == ["AS", "2H", "3D"]
+
+    for _ in range(12):                      # o 3D some do quadro
+        r.update(fan(("AS", 100), ("2H", 200)))
+    assert r.cards == ["AS", "2H"]           # saiu da TELA...
+
+    r.update(fan(("AS", 100), ("2H", 200), ("3D", 300)))
+    assert r.cards == ["AS", "2H", "3D"]     # ...mas não foi esquecida
+
+
+def test_ordem_nao_troca_quando_as_duas_cartas_estao_no_MESMO_x():
+    """"O 7 tava trocando de lugar com o 10" — o relato do usuário, 26/08.
+
+    Num leque em ARCO duas cartas podem ter praticamente o mesmo x, uma acima da
+    outra, e a ordem sai do x das vagas: o tremor decide o empate a cada frame e
+    a tela troca as duas de lugar sozinha. Medido: 14 das 16 trocas de ordem da
+    partida tinham as vagas a 0-2 px; as duas legítimas, a 94 e 108 px.
+    """
+    r = FanReader(min_appear=3, ordem_margem=0.05)   # 5% da largura da caixa
+    for _ in range(6):
+        r.update([d("7D", 200, y=100), d("10S", 201, y=160)])
+    antes = list(r.cards)
+
+    for dx in (-2, 2, -1, 3, -3):            # o empate oscilando
+        r.update([d("7D", 200 + dx, y=100), d("10S", 201, y=160)])
+        assert r.cards == antes, f"a tela trocou a ordem com dx={dx}"
+
+    # e uma passagem DE VERDADE ainda reordena
+    for _ in range(4):
+        r.update([d("7D", 400, y=100), d("10S", 201, y=160)])
+    assert r.cards == antes[::-1]

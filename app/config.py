@@ -132,6 +132,19 @@ class Config:
     # Custo medido na partida de 19/08: contradição 5,4% -> 7,1%. Boa parte
     # disso é o comportamento PEDIDO (a carta só aparece depois de encaixada),
     # que a métrica não sabe distinguir de erro. 0 desliga.
+    # Ausência (em frames) a partir da qual a vaga deixa de ser EXIBIDA, sem
+    # morrer. `fan_expire` decide quando a vaga morre e precisa ser generosa
+    # (oclusão curta não pode apagar a carta); até morrer, porém, ela era
+    # mostrada — e é a mão anterior ainda no ar que o usuário viu como "várias
+    # cartas fantasmas" em 26/08. Ver `FanReader._recompute`.
+    # Medido nas oito gravações: o excesso (carta na tela que o quadro não
+    # mostrou) cai de 6,5% para 3,6% em média, com a cobertura IDÊNTICA em
+    # todas. O custo é a contradição subir ~0,8 ponto — a carta que pisca
+    # demora ~0,5 s a mais para voltar, porque precisa reconquistar o
+    # `lock_frames`. 24 é metade do `fan_expire`, e é o fundo da varredura:
+    # 32 acha menos fantasma e 16 já começa a piscar a tela.
+    fan_exibe_misses: int = 24
+
     # Margem, em LARGURAS DE CAIXA, para a tela TROCAR duas cartas de lugar. Num leque em arco
     # duas cartas podem ter quase o mesmo x (uma acima da outra), e aí a ordem
     # por x vira cara-ou-coroa a cada frame — o usuário vê as duas trocando de

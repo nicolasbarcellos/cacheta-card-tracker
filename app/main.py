@@ -148,7 +148,8 @@ def build_pipeline():
                           borda=config.fan_borda,
                           peso_min=config.fan_peso_min,
                           vao_grupo=config.fan_vao_grupo,
-                          ordem_margem=config.fan_ordem_margem)
+                          ordem_margem=config.fan_ordem_margem,
+                          exibe_misses=config.fan_exibe_misses)
     hand_lock = StableHand(lock_frames=config.lock_frames)
     return hand_view, hand_lock
 

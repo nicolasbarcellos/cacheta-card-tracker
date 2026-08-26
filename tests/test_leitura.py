@@ -155,7 +155,17 @@ def test_excesso_cobra_a_carta_que_ficou_na_tela_depois_de_sumir_do_quadro():
     mao = leque(["AS", "2S", "3S", "4H", "5H"])
     # o leque perde a última carta: some do QUADRO, e a tela demora a soltar
     menor = mao[:-1]
-    res = mede(partida([(mao, ASSENTA), (menor, ASSENTA)]))
+    # Com `fan_exibe_misses` a tela solta a carta ANTES de a janela do teto
+    # esquecê-la (24 misses + a trava contra 60 frames de janela), e aí não há
+    # excesso para cobrar — que é justamente o efeito medido em 26/08. Aqui o
+    # que está sob teste é a MÉTRICA, não o parâmetro: ela tem de cobrar a
+    # carta que fica na tela depois de sumir, venha esse atraso de onde vier.
+    antes = config.fan_exibe_misses
+    config.fan_exibe_misses = 0
+    try:
+        res = mede(partida([(mao, ASSENTA), (menor, ASSENTA)]))
+    finally:
+        config.fan_exibe_misses = antes
 
     assert res["excesso"]["frames"] > 0
     assert dict(res["excesso"]["por_carta"])["5H"] > 0

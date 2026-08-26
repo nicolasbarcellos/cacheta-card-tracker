@@ -46,7 +46,7 @@ class FanReader:
                  win_margin: float = 1.6,
                  frame_w: int = 0, frame_h: int = 0, borda: float = 0.0,
                  peso_min: float = 0.0, vao_grupo: float = 0.0,
-                 ordem_margem: float = 0.0):
+                 ordem_margem: float = 0.0, exibe_misses: int = 0):
         self.match_dist = match_dist
         # Zona morta nas bordas do quadro. Uma carta que desce abaixo do
         # enquadramento tem o índice CORTADO, e o modelo palpita em cima de
@@ -62,6 +62,9 @@ class FanReader:
         self.peso_min = peso_min
         # Vão que separa a carta segurada à parte do leque — ver `_so_o_leque`.
         self.vao_grupo = vao_grupo
+        # Ausência a partir da qual a vaga PARA DE SER EXIBIDA, sem morrer.
+        # Ver `_recompute`. 0 = desligado (a vaga é exibida até expirar).
+        self.exibe_misses = exibe_misses
         # Margem em px para TROCAR duas cartas de lugar — ver `_ordena`.
         self.ordem_margem = ordem_margem
         self._ordem: list[int] = []     # sequência das vagas na última exibição
@@ -555,6 +558,20 @@ class FanReader:
 
     def _recompute(self) -> bool:
         confirmed = [s for s in self._slots if len(s["votes"]) >= self.min_appear]
+        # NÃO EXIBIR A VAGA QUE SUMIU HÁ MUITO, SEM MATÁ-LA. São duas coisas
+        # diferentes e estavam presas uma na outra: `fan_expire` decide quando a
+        # vaga MORRE (e ela precisa ser generosa, senão uma oclusão curta apaga
+        # a carta e o leque é relido do zero), mas até morrer a vaga era
+        # EXIBIDA. Medido na partida de 26/08, e foi o usuário quem viu ("criava
+        # várias cartas fantasmas"): num instante de troca de mão a tela mostrou
+        # 12 cartas, e as três a mais — `10H`, `8D`, `JS` — tinham sido
+        # detectadas em ZERO frames ali, com 17 a 47 misses. Eram a mão
+        # anterior ainda no ar.
+        #
+        # Segurar a exibição é seguro porque quem protege contra piscada é o
+        # `StableHand`: a mão só troca depois de `lock_frames` estável.
+        if self.exibe_misses:
+            confirmed = [s for s in confirmed if s["misses"] < self.exibe_misses]
         # PISO DE PESO: vaga muito mais fraca que as vizinhas não é carta.
         #
         # A vaga sobrevive aos frames em que a carta não aparece — é o que faz
