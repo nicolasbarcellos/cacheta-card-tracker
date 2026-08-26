@@ -105,7 +105,18 @@ def mede(registros: list[dict], conf_alta: float = 0.80,
     exibida_antes: tuple = ()
 
     ordem_ok = ordem_ruim = 0
+    ordem_ok_folga = ordem_ruim_folga = 0
     exemplos_ordem: list[tuple] = []
+    # VAIVÉM DE ORDEM: a tela troca duas cartas de lugar sem que o CONJUNTO
+    # mude. Não é o mesmo que `ordem errada` (aquela pergunta se a ordem bate
+    # com o quadro AGORA) nem entra em `trocas` (que compara conjuntos
+    # ordenados, e por isso é cega a isto). É o defeito que o usuário relatou
+    # em 26/08 — "o 7 tava trocando de lugar com o 10" — e que nenhum número
+    # via: naquela partida foram 16 vaivéns em 41 mudanças de tela, 12 deles do
+    # mesmo par, com as duas vagas a 0-2 px uma da outra.
+    vaivem = 0
+    pares_vaivem: Counter = Counter()
+    ordem_antes: tuple = ()
 
     contradiz = 0
     por_carta: Counter = Counter()
@@ -144,6 +155,14 @@ def mede(registros: list[dict], conf_alta: float = 0.80,
         visto_desde.setdefault(vivo, ts)
 
         exibida = trava.cards
+        atual_ordem = tuple(exibida)
+        if (atual_ordem != ordem_antes
+                and sorted(atual_ordem) == sorted(ordem_antes) and ordem_antes):
+            vaivem += 1
+            dif = [(a, b) for a, b in zip(ordem_antes, atual_ordem) if a != b]
+            if len(dif) == 2 and dif[0][0] == dif[1][1]:
+                pares_vaivem[tuple(sorted((dif[0][0], dif[0][1])))] += 1
+        ordem_antes = atual_ordem
         chave = tuple(sorted(exibida))
         if chave != exibida_antes:
             trocas += 1
@@ -174,13 +193,39 @@ def mede(registros: list[dict], conf_alta: float = 0.80,
         # quadro. Quando as cartas divergem, o que existe é erro de conjunto,
         # que já é cobrado pela contradição — cobrar de novo aqui contaria o
         # mesmo defeito duas vezes.
-        fisica = [d.card.code
-                  for d in sorted(leque, key=lambda d: (d.box[0] + d.box[2]) / 2)]
+        ordenadas = sorted(leque, key=lambda d: (d.box[0] + d.box[2]) / 2)
+        fisica = [d.card.code for d in ordenadas]
         if Counter(fisica) == Counter(exibida):
             if fisica == list(exibida):
                 ordem_ok += 1
+                ordem_ok_folga += 1
             else:
                 ordem_ruim += 1
+                # ORDEM ERRADA COM FOLGA: duas cartas no MESMO x não têm ordem
+                # física definida — o `sorted` decide por arredondamento, e
+                # cobrar a tela por discordar dele é cobrar um sorteio. Aqui só
+                # conta inversão em que as duas estão separadas por mais de uma
+                # fração da largura da caixa. Medido em 26/08: 14 das 16 trocas
+                # de ordem da tela tinham as cartas a 0-2 px.
+                xs = {}
+                for d in ordenadas:
+                    xs.setdefault(d.card.code, []).append(
+                        (d.box[0] + d.box[2]) / 2)
+                larguras = sorted(d.box[2] - d.box[0] for d in ordenadas)
+                tol = 0.05 * max(larguras[len(larguras) // 2], 1)
+                pos, usados = [], Counter()
+                for code in exibida:
+                    lista = xs.get(code, [0.0])
+                    k = min(usados[code], len(lista) - 1)
+                    pos.append(lista[k])
+                    usados[code] += 1
+                invertida = any(pos[i] > pos[j] + tol
+                                for i in range(len(pos))
+                                for j in range(i + 1, len(pos)))
+                if invertida:
+                    ordem_ruim_folga += 1
+                else:
+                    ordem_ok_folga += 1
                 if len(exemplos_ordem) < max_exemplos:
                     exemplos_ordem.append((rec["i"], round(ts, 1),
                                            list(exibida), fisica))
@@ -248,10 +293,14 @@ def mede(registros: list[dict], conf_alta: float = 0.80,
             "sem_leitura_viva": sem_leitura_viva,
         },
         "trocas": trocas,
+        "vaivem": {"n": vaivem, "pares": pares_vaivem.most_common(5)},
         "ordem": {
             "comparaveis": comparaveis,
             "errada": ordem_ruim,
             "pct": ordem_ruim / comparaveis if comparaveis else 0.0,
+            "errada_folga": ordem_ruim_folga,
+            "pct_folga": (ordem_ruim_folga / (ordem_ok_folga + ordem_ruim_folga)
+                          if (ordem_ok_folga + ordem_ruim_folga) else 0.0),
             "exemplos": exemplos_ordem,
         },
         "contradicao": {
@@ -307,7 +356,15 @@ def imprime(res: dict, rotulo: str = "", detalhar: bool = True):
     o = res["ordem"]
     print(f"  ORDEM errada: {o['errada']}/{o['comparaveis']} frames "
           f"({100 * o['pct']:.1f}%)")
+    print(f"    dos quais {o['errada_folga']} ({100 * o['pct_folga']:.1f}%) com "
+          f"as cartas SEPARADAS -- o resto e empate de x, ordem indefinida")
     print(f"  TROCAS da mao exibida: {res['trocas']}")
+    v = res["vaivem"]
+    print(f"  VAIVEM de ordem: {v['n']} vezes a tela trocou duas cartas de "
+          f"lugar sem mudar o conjunto")
+    if v["pares"] and detalhar:
+        for (a, b), n in v["pares"]:
+            print(f"    {a} <-> {b}: {n}x")
     print(f"  COBERTURA: mao na tela em {res['com_carta_e_mao']}/"
           f"{res['com_carta']} frames COM CARTA no quadro "
           f"({100 * res['cobertura']:.1f}%)")

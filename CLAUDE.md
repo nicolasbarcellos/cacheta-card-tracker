@@ -1153,6 +1153,68 @@ medição sustenta é a queda da PERDA, que é o alvo e foi medida em duas grava
 Rollback: `copy models\cards_backup_10.pt models\cards.pt`. (Este é o modelo em produção —
 `cards_backup_11.pt` é cópia dele; ver "Três coisas que NÃO melhoraram o modelo".)
 
+### O VAIVÉM DE ORDEM: o usuário viu antes de qualquer número (2026-08-26)
+
+Jogando a partida de 26/08 ele relatou dois defeitos que nenhuma métrica pegava. O primeiro:
+*"o 7 tava trocando de lugar com o 10"*. Está inteiro nos dados: das **41 mudanças do que estava na
+tela, 16 foram só de ORDEM** — mesmo conjunto, cartas trocadas de lugar — e **12 delas são o mesmo
+par `10S ↔ 7D`**. Um par só respondia por 29% de tudo que a tela fazia.
+
+**Por que nada via isso.** As `trocas` da métrica comparam conjuntos ORDENADOS (`tuple(sorted(...))`)
+e são cegas a troca de posição; a `ordem errada` pergunta outra coisa (se a ordem bate com o quadro
+AGORA), e fica em 1,0% enquanto isso acontece. O instrumento ganhou o número que faltava —
+**vaivém**: quantas vezes a tela trocou duas cartas de lugar sem o conjunto mudar.
+
+**A causa, medida.** Num leque em ARCO duas cartas podem ter praticamente o mesmo x — uma acima da
+outra —, e a ordem sai do x das vagas. Medido nas 16 trocas daquela partida: **14 aconteceram com
+as duas vagas a 0-2 px uma da outra**; as outras duas, a 94 e 108 px, eram reordenação de verdade
+(o jogador mexendo no leque). Cartas VIZINHAS ficam a 44-111 px (p05 = 69). Ou seja: são duas
+populações separadas por duas ordens de grandeza, e a ordenação por x estava decidindo o empate por
+arredondamento, a cada frame.
+
+**"Esperar mais" NÃO é o conserto, e o usuário propôs isso** (*"tem que esperar um pouco mais para
+ler as mudanças"*). Varrido na própria partida, `lock_frames` de 20 a 48: o vaivém não se move
+(25 → 22 trocas) e todo o resto piora — atraso 0,73 → 1,52 s, excesso 6,0% → 13,1%. O motivo é
+estrutural: **a ordem não passa pelo `lock_frames`**, ela acompanha a leitura viva a cada frame de
+propósito, e é isso que faz a carta comprada aparecer no lugar certo (derrubou a ordem errada de
+16,9% para 1,9% em 19/08). O que ele viu era real; o botão é que era outro.
+
+**O conserto é histerese de ORDEM** (`FanReader._ordena`, `fan_ordem_margem = 0,05`): partindo da
+ordem já exibida, duas cartas só trocam de lugar se uma passar a outra por mais que a margem. A
+margem é adimensional, em **larguras de caixa**, pelo mesmo motivo do `_so_o_leque` — em px, 15
+levava a ordem errada de 1,6% para 10,0% na partida em que o leque está mais longe da câmera, e não
+mexia na de perto.
+
+| gravação | vaivém antes | depois |
+|---|---|---|
+| 11/08 | 50 | **26** |
+| 12/08 | 50 | **18** |
+| 19/08 15:50 | 12 | 10 |
+| 19/08 16:22 | 28 | **6** |
+| 20/08 17:42 | 30 | 26 |
+| 20/08 19:43 | 20 | **8** |
+| 25/08 | 2 | 2 |
+| **26/08 (a partida do relato)** | **16** | **8** |
+
+**E o custo aparente é ZERO — mas descobrir isso exigiu consertar o instrumento.** Com a histerese,
+a `ordem errada` crua SOBE (2,1% → 5,0% em 11/08). Só que ela cobra como erro o EMPATE: quando duas
+cartas estão no mesmo x, a ordem "física" de referência é o mesmo sorteio que se está tentando
+eliminar. A métrica passou a publicar também a **ordem errada com folga**, que só conta inversão
+entre cartas de fato separadas (mais de 0,05 largura de caixa) — e essa não se move:
+
+| | crua, sem histerese | crua, com | **com folga, sem** | **com folga, com** |
+|---|---|---|---|---|
+| 11/08 | 2,1% | 5,0% | **1,6%** | **1,6%** |
+| 12/08 | 1,6% | 2,0% | **1,0%** | **1,0%** |
+| 26/08 | 1,0% | 2,0% | **0,8%** | **0,9%** |
+
+Contradição, excesso, atraso e cobertura ficam idênticos nas oito gravações: a histerese só toca a
+ordem, que é o que ela deve fazer.
+
+**A lição de método**: o defeito foi visto por quem usa, não pelo número — e a primeira reação
+(mexer no `lock_frames`) era a errada. Quando o usuário descreve um sintoma, o trabalho é achar
+QUAL mecanismo o produz, não aplicar o botão que soa parecido.
+
 ### O primeiro número AO VIVO do modelo novo (2026-08-25 19:30)
 
 Partida gravada no dia com o modelo publicado, 12,1 min a **37 fps** — e é a única medição desta

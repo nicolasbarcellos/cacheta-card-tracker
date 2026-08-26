@@ -45,7 +45,8 @@ class FanReader:
                  shift_tol: float = 20.0, max_shift: float = 200.0,
                  win_margin: float = 1.6,
                  frame_w: int = 0, frame_h: int = 0, borda: float = 0.0,
-                 peso_min: float = 0.0, vao_grupo: float = 0.0):
+                 peso_min: float = 0.0, vao_grupo: float = 0.0,
+                 ordem_margem: float = 0.0):
         self.match_dist = match_dist
         # Zona morta nas bordas do quadro. Uma carta que desce abaixo do
         # enquadramento tem o índice CORTADO, e o modelo palpita em cima de
@@ -61,6 +62,10 @@ class FanReader:
         self.peso_min = peso_min
         # Vão que separa a carta segurada à parte do leque — ver `_so_o_leque`.
         self.vao_grupo = vao_grupo
+        # Margem em px para TROCAR duas cartas de lugar — ver `_ordena`.
+        self.ordem_margem = ordem_margem
+        self._ordem: list[int] = []     # sequência das vagas na última exibição
+        self._seq = 0                   # id estável de vaga (id() se recicla)
         self.window = window
         self.min_appear = min_appear
         self.expire = expire
@@ -394,13 +399,16 @@ class FanReader:
                 # justamente a que o teto existe para permitir.
                 if self._cortada(d.box):
                     continue
+                self._seq += 1
                 slot = {"x": cx, "y": cy, "votes": deque(maxlen=self.window),
-                        "misses": 0, "label": None}
+                        "misses": 0, "label": None, "seq": self._seq,
+                        "w": d.box[2] - d.box[0]}
                 self._slots.append(slot)
             tomadas.add(id(slot))
             # posição segue a carta suavemente (média móvel)
             slot["x"] = 0.7 * slot["x"] + 0.3 * cx
             slot["y"] = 0.7 * slot["y"] + 0.3 * cy
+            slot["w"] = 0.7 * slot.get("w", 0) + 0.3 * (d.box[2] - d.box[0])
             slot["votes"].append((d.card.code, d.confidence))
             slot["misses"] = 0
             seen.add(id(slot))
@@ -463,6 +471,51 @@ class FanReader:
             if not gemea:
                 mantidas.append(s)
         self._slots = mantidas
+
+    def _ordena(self, slots: list[dict]) -> list[dict]:
+        """Ordem do leque com HISTERESE: só troca quem está claramente à frente.
+
+        A ordem sai do x das vagas, e num leque em arco duas cartas podem ter
+        praticamente o MESMO x — uma acima da outra. Aí a ordenação por x vira
+        cara-ou-coroa a cada frame, e a tela troca as duas de lugar sozinha.
+        Medido na partida de 2026-08-26, e foi o USUÁRIO quem viu primeiro ("o 7
+        tava trocando de lugar com o 10"): **14 das 16 trocas de ordem da
+        partida aconteceram com as duas vagas a 0-2 px uma da outra**. As outras
+        duas, a 94 e 108 px, eram reordenação de verdade — ele mexendo no leque.
+
+        Esperar mais NÃO resolve, e foi medido: a ordem não passa pelo
+        `lock_frames` (ela acompanha a leitura viva a cada frame de propósito, e
+        é o que faz a carta comprada aparecer no lugar certo — derrubou a ordem
+        errada de 16,9% para 1,9% em 19/08). Varrendo `lock_frames` de 20 a 48
+        nesta mesma partida, o vaivém não se move e todo o resto piora.
+
+        A margem separa as duas populações com folga: cartas VIZINHAS no leque
+        ficam a 44-111 px (p05 = 69), duas ordens de grandeza acima do empate.
+        """
+        if not self.ordem_margem or not slots:
+            return sorted(slots, key=lambda s: s["x"])
+        # a margem é adimensional, em LARGURAS DE CAIXA, pelo mesmo motivo do
+        # `_so_o_leque`: o leque muda de tamanho no quadro conforme a distância
+        # da câmera, e margem em px vira coisas diferentes em cada partida.
+        # Medido: em px, 15 levava a ordem errada de 1,6% para 10,0% na partida
+        # em que o leque está mais longe, e não mexia na de perto.
+        larguras = sorted(s.get("w", 0) or 0 for s in slots)
+        margem = self.ordem_margem * max(larguras[len(larguras) // 2], 1.0)
+        # começa da ordem ANTERIOR (vaga nova entra pelo x, no fim) e só desfaz
+        # o que estiver fora de ordem por mais que a margem
+        antes = {seq: i for i, seq in enumerate(self._ordem)}
+        fim = len(antes) + 1
+        ordenados = sorted(slots, key=lambda s: (antes.get(s["seq"], fim), s["x"]))
+        trocou = True
+        while trocou:
+            trocou = False
+            for i in range(len(ordenados) - 1):
+                if ordenados[i]["x"] > ordenados[i + 1]["x"] + margem:
+                    ordenados[i], ordenados[i + 1] = (ordenados[i + 1],
+                                                      ordenados[i])
+                    trocou = True
+        self._ordem = [s["seq"] for s in ordenados]
+        return ordenados
 
     @staticmethod
     def _weight(votes) -> float:
@@ -586,7 +639,7 @@ class FanReader:
             confirmed = mantidos
         if self.max_slots is not None:
             confirmed = self._corta(confirmed, self.max_slots)
-        confirmed.sort(key=lambda s: s["x"])
+        confirmed = self._ordena(confirmed)
         cards = []
         for s in confirmed:
             s["label"] = self._winner(s["votes"], s.get("label"))
@@ -630,6 +683,7 @@ class FanReader:
         return out
 
     def reset(self):
+        self._ordem.clear()
         self._slots.clear()
         self._displayed = []
         self._empty = 0

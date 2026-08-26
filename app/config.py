@@ -132,6 +132,14 @@ class Config:
     # Custo medido na partida de 19/08: contradição 5,4% -> 7,1%. Boa parte
     # disso é o comportamento PEDIDO (a carta só aparece depois de encaixada),
     # que a métrica não sabe distinguir de erro. 0 desliga.
+    # Margem, em LARGURAS DE CAIXA, para a tela TROCAR duas cartas de lugar. Num leque em arco
+    # duas cartas podem ter quase o mesmo x (uma acima da outra), e aí a ordem
+    # por x vira cara-ou-coroa a cada frame — o usuário vê as duas trocando de
+    # lugar sozinhas. Medido em 26/08: 14 das 16 trocas de ordem da partida
+    # tinham as vagas a 0-2 px; as duas legítimas, a 94 e 108 px. Vizinhas no
+    # leque ficam a 44-111 px (p05 = 69), então a margem separa com folga.
+    # Ver `FanReader._ordena`.
+    fan_ordem_margem: float = 0.05
     fan_vao_grupo: float = 2.5
     # Frames com a MESMA leitura antes de trocar a mão exibida. Com 12 (~0,8s)
     # uma leitura errada durante a organização das cartas na mão durava tempo
