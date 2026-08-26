@@ -1245,25 +1245,40 @@ O arranjo C reproduziu a condição antiga (paus colado, mesmo aperto) e o D acr
 mesmo leque — a hipótese da gêmea. **Zero erro nos dois.** Em 209 frames de hoje o 9♠ foi lido
 errado UMA vez (0,5%), e essa uma tinha um COPAS ao lado, não um paus.
 
-**A causa é a GEOMETRIA daquela captura antiga.** A largura da caixa do índice do 9♠, dividida pela
-mediana das vizinhas do mesmo frame:
+**O que está medido, e o que NÃO está.** A largura da caixa do índice do 9♠, dividida pela mediana
+das vizinhas do mesmo frame, é 0,73 (p10 0,64) no holdout contra 1,12-1,33 hoje — o índice dele
+naquela captura estava mesmo mais coberto. **Mas isso sozinho NÃO explica o erro**, e a tentativa
+de transformar essa observação em guarda foi refutada três vezes (ver abaixo): hoje o `Q♥` saiu a
+0,71 e o `3♥` a 0,68, tão estreitos quanto aquele 9♠, em capturas com ~0% de erro.
 
-| | largura relativa do 9♠ |
-|---|---|
-| holdout antigo | **0,73** (p10 0,64) — índice parcialmente COBERTO pela carta vizinha |
-| hoje A / B / C / D | 1,15 / 1,33 / 1,12 / 1,12 — índice inteiro |
-
-E dentro do próprio conjunto antigo, os erros são o subconjunto em que a caixa **incha**:
+O que fica medido dentro do próprio conjunto antigo é que os erros são o subconjunto em que a caixa
+**incha**:
 
 | 9♠ no holdout antigo | largura relativa |
 |---|---|
 | lido certo (55 frames) | 0,73 |
 | lido **errado** (7 frames) | **0,98** (p90 1,08) |
 
-Ou seja: naquele leque o índice do 9♠ e o do 2♣ estão tão entrelaçados que a caixa ora pega só o
-9♠ (estreita, lê certo), ora **invade a vizinha** (larga) — e aí sai `9C` ou `2C`, que são
-exatamente os dois rótulos contidos no recorte. Confirmado a olho na folha de contato: nos frames
-com erro o "9" aparece mutilado, com um pip de paus dentro do mesmo recorte.
+Ou seja: naquele leque a caixa ora pega só o 9♠ (estreita, lê certo), ora **invade a vizinha**
+(larga) — e aí sai `9C` ou `2C`, que são exatamente os dois rótulos contidos no recorte. Confirmado
+a olho na folha de contato: nos frames com erro o "9" aparece mutilado, com um pip de paus dentro
+do mesmo recorte.
+
+**Fica em aberto o que torna AQUELA captura propensa ao inchaço**, já que outras com índices igualmente
+estreitos não erram. O que está provado é a localização do defeito (aquela captura), não o mecanismo
+que o gera.
+
+**Três guardas de captura propostas e REFUTADAS na mesma sessão** (não reimplemente):
+
+| guarda candidata | por que caiu |
+|---|---|
+| índice estreito em relação às vizinhas | capturas boas de hoje descem a 0,68-0,71, e o `datasets/local` inteiro a 0,49 |
+| caixas de índice se ENCOSTANDO | **100% dos frames de TODOS os conjuntos** têm sobreposição; as capturas boas se sobrepõem MAIS (-0,48 e -0,85 contra -0,39 da ruim) |
+| carta persistentemente estreita na captura | hoje A tem `QH=0,71` e B tem `3H=0,68`, com ~0% de erro |
+
+A terceira é a mais instrutiva: o critério visual que este arquivo recomenda — *"as caixas verdes não
+podem se encostar"* — **não é verificável como número**, porque num leque real elas sempre se
+encostam. Ele continua útil como sinal grosseiro para o olho; como gate automático, não existe.
 
 **Três consequências:**
 
@@ -1273,10 +1288,9 @@ com erro o "9" aparece mutilado, com um pip de paus dentro do mesmo recorte.
    as 62 amostras do 9♠ dele estão com o índice 27% coberto — a "troca de naipe na mesma cor" que
    ele publica está inflada por um defeito de captura, não de modelo. Ao julgar um retreino por
    ele, desconte essa linha.
-3. **É a regra que o projeto já tinha, cobrada agora na captura e não só no jogo**: *o passo entre
-   cartas precisa EXPOR o índice*. O `ver_ordem.py` avisa quando o VÃO entre cantos fica pequeno —
-   mas não avisa quando a caixa de UM índice sai estreita em relação às vizinhas, que é o sinal de
-   índice coberto. É a guarda que falta ali.
+3. **Não há guarda automática de captura para isto** — três candidatas foram medidas e reprovadas
+   (tabela acima). O `ver_ordem.py` fica como está: o que ele já faz (mostrar a ordem lida, os vãos
+   e a imagem para o olho) é o que se sabe verificar.
 
 Os 209 frames dos quatro arranjos ficaram em `training/datasets/teste-9S/{A,B,C,D}` — dado real,
 rotulado pela ORDEM, e um conjunto de validação do 9♠ muito melhor que o antigo.
