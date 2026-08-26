@@ -1224,6 +1224,50 @@ acontece em certas montagens de leque, e cobra um prêmio pequeno nas outras. O 
 (mexer no `lock_frames`) era a errada. Quando o usuário descreve um sintoma, o trabalho é achar
 QUAL mecanismo o produz, não aplicar o botão que soa parecido.
 
+### De que é feita a CONTRADIÇÃO que sobra, e o retreino de classe que foi REPROVADO (2026-08-26)
+
+Com a tela já consertada (vaivém e fantasma), a contradição ficou em 9,2-9,5% ao vivo. Medido nas
+duas partidas de 26/08, frame a frame, perguntando se a carta cobrada aparece na tela a menos de
+1,5 s:
+
+- **85% é TRANSIÇÃO** — a tela a caminho. É o preço do `lock_frames`, e subir esse botão só piora
+  (varrido: 20→48 leva o atraso de 0,73 s a 1,52 s e o excesso de 6,0% a 13,1%).
+- **15% é a tela sem mostrar a carta.** E o topo desse resíduo é um erro de MODELO: na partida das
+  14:12, o `A♣` foi lido como `A♠` com **0,85-0,91 em 76 frames**, com o índice inteiro e bem
+  iluminado. Os recortes do vídeo não deixam dúvida: a carta é um A♣, e **a votação temporal do
+  leitor corrigiu**. A tela estava certa; a métrica cobrou dela um erro do modelo — o mesmo padrão
+  já registrado no excesso com o leitor congelado e na ordem com empate.
+
+**A tentativa de consertar isso com dado, e por que ela foi reprovada.** `training/extrai_classe.py`
+extrai justamente esses frames: o modelo lê X com confiança alta onde a vaga (já estabelecida, viva
+e na tela) diz Y, restrito à família *troca de naipe na MESMA COR*. O rótulo do frame INTEIRO sai
+das vagas, senão os outros índices virariam fundo.
+
+O filtro por família é o que torna isso possível, e não é preciosismo: sem ele saem **8.448 pares**,
+dominados por coisas impossíveis (`2S->AH`, `KC->5D`) que são o leque sendo REARRANJADO, com a vaga
+herdando a posição de outra carta. **Três filtros geométricos foram tentados e nenhum separou** — a
+vaga certa e a velha ficam a poucos px uma da outra. Com a família, sobram 118 candidatos; a
+auditoria a olho aprova a grande maioria (`J♣` lido J♠, `A♣` lido A♠, `2♥` lido 2♦, `9♥` lido 9♦), e
+um filtro automático que rejeita o frame com qualquer correção FORA da família deixa **53 frames**.
+
+Retreinado com eles (3.043 imagens, 39% real), holdouts de sempre. **O resultado é uma troca ruim:**
+
+| | `cards_backup_11` (publicado) | com o dado de classe |
+|---|---|---|
+| perda de detecção — 19/08 16:22 | **4,97%** | 6,46% |
+| perda de detecção — 11/08 | **3,97%** | 4,25% |
+| naipe na mesma cor — 11/08 + `teste-9S` | 7 erros | **2 erros** |
+| classe correta — `holdout-ranks` | 98,6% | 98,5% |
+
+Ganhou 5 erros de naipe em números de UM DÍGITO e perdeu **0,9 ponto de perda de detecção na
+média**, com 1,5 ponto numa das gravações — muito acima do ruído de rodada (~0,3) medido no mesmo
+dia. **Rollback para o `cards_backup_11`.**
+
+A hipótese de por que piorou, e ela NÃO foi medida: 53 frames de erro de classe são 53 frames em que
+o modelo é empurrado a mudar de opinião sobre um índice que ele lia com 0,85-0,91 — e nada garante
+que o empurrão fique restrito ao naipe. O script fica no repositório porque a extração é correta e
+a auditoria passou; o que não se sustentou foi o proveito.
+
 ### O `9♠→9♣` NÃO era confusão de naipe — era a captura (2026-08-26)
 
 O último erro de classe aberto do projeto, e o único que não respondia a retreino nenhum
