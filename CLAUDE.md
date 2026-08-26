@@ -1196,11 +1196,12 @@ mexia na de perto.
 | 25/08 | 2 | 2 |
 | **26/08 (a partida do relato)** | **16** | **8** |
 
-**E o custo aparente é ZERO — mas descobrir isso exigiu consertar o instrumento.** Com a histerese,
-a `ordem errada` crua SOBE (2,1% → 5,0% em 11/08). Só que ela cobra como erro o EMPATE: quando duas
-cartas estão no mesmo x, a ordem "física" de referência é o mesmo sorteio que se está tentando
-eliminar. A métrica passou a publicar também a **ordem errada com folga**, que só conta inversão
-entre cartas de fato separadas (mais de 0,05 largura de caixa) — e essa não se move:
+**O custo é PEQUENO, e descobri-lo exigiu consertar o instrumento — mas não é zero.** Com a
+histerese, a `ordem errada` crua SOBE (2,1% → 5,0% em 11/08). Só que ela cobra como erro o EMPATE:
+quando duas cartas estão no mesmo x, a ordem "física" de referência é o mesmo sorteio que se está
+tentando eliminar. A métrica passou a publicar também a **ordem errada com folga**, que só conta
+inversão entre cartas de fato separadas (mais de 0,05 largura de caixa) — e nas seis gravações
+antigas essa não se move:
 
 | | crua, sem histerese | crua, com | **com folga, sem** | **com folga, com** |
 |---|---|---|---|---|
@@ -1211,9 +1212,53 @@ entre cartas de fato separadas (mais de 0,05 largura de caixa) — e essa não s
 Contradição, excesso, atraso e cobertura ficam idênticos nas oito gravações: a histerese só toca a
 ordem, que é o que ela deve fazer.
 
+**Ressalva medida em 2026-08-26 14:12, e ela qualifica o "custo zero" acima.** Numa partida em que o
+usuário NÃO produziu o empate (vaivém 2 com e sem histerese), o teste controlado — a mesma gravação
+com o conserto ligado e desligado — mostrou a ordem errada COM FOLGA subindo de **0,0% para 0,5%**
+(17 frames). Não é empate cobrado à toa: é a histerese segurando a ordem antiga por um instante
+depois de uma reordenação de verdade. Ou seja, a histerese é seguro contra um defeito que só
+acontece em certas montagens de leque, e cobra um prêmio pequeno nas outras. O prêmio é da ordem de
+0,1-0,5 ponto; o defeito que ela evita valia 12 das 41 mudanças da tela.
+
 **A lição de método**: o defeito foi visto por quem usa, não pelo número — e a primeira reação
 (mexer no `lock_frames`) era a errada. Quando o usuário descreve um sintoma, o trabalho é achar
 QUAL mecanismo o produz, não aplicar o botão que soa parecido.
+
+### A validação dos dois consertos, ao vivo e controlada (2026-08-26 14:12)
+
+Partida curta gravada logo depois dos dois consertos, 3,6 min a 41,8 fps, com **59,6% dos frames
+tendo carta no quadro**. É a melhor medição ao vivo do projeto:
+
+| | 26/08 13:24 (antes dos consertos) | **26/08 14:12** |
+|---|---|---|
+| atraso até a tela | 0,73 s | **0,57 s** |
+| contradição | 9,5% | **9,2%** |
+| excesso | 6,0% | **1,6%** |
+| ordem errada | 2,0% | **0,5%** |
+| vaivém de ordem | 16 | **2** |
+| perda de detecção | 3,78% | **2,51%** |
+| cobertura | 97,4% | 97,3% |
+
+Mas partidas diferentes não provam conserto. O que prova é o **teste controlado — a MESMA gravação,
+com os consertos ligados e desligados**:
+
+| | consertos OFF | consertos ON |
+|---|---|---|
+| excesso | 5,0% | **1,6%** |
+| excesso **com o leitor vivo** | 3,4% | **0,0%** |
+| vaivém | 2 | 2 |
+| ordem errada (cartas separadas) | 0,0% | 0,5% |
+
+**O `fan_exibe_misses` ganhou o lugar dele**: o excesso com o leitor VIVO foi a zero — tudo o que
+sobra acontece com o leitor congelado, que é o comportamento pedido. A mão anterior não fica mais
+no ar.
+
+**A histerese de ordem não foi exercitada nesta partida** (vaivém 2 nos dois casos: o usuário não
+montou o leque com duas cartas quase uma sobre a outra), e aí só apareceu o custo dela — ver a
+ressalva na seção do vaivém. É seguro contra um defeito que depende da montagem do leque.
+
+Ficou em aberto: o atraso teve mediana 0,57 s e p90 0,73 s, mas **um caso isolado de 6,07 s**. Uma
+mão só, num n de 27; não foi investigado.
 
 ### As CARTAS FANTASMAS ao encaixar: a mão anterior ainda no ar (2026-08-26)
 
