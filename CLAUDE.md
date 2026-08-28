@@ -1372,8 +1372,88 @@ no ar.
 montou o leque com duas cartas quase uma sobre a outra), e aí só apareceu o custo dela — ver a
 ressalva na seção do vaivém. É seguro contra um defeito que depende da montagem do leque.
 
-Ficou em aberto: o atraso teve mediana 0,57 s e p90 0,73 s, mas **um caso isolado de 6,07 s**. Uma
-mão só, num n de 27; não foi investigado.
+O caso isolado de **6,07 s** de atraso que ficou em aberto aqui foi investigado em 2026-08-28 e
+**não era atraso** — era defeito do instrumento. Ver a seção seguinte.
+
+### O atraso máximo era do INSTRUMENTO, não do pipeline (2026-08-28)
+
+O caso de 6,07 s da partida acima, reconstruído frame a frame. A tela adotou
+`3H 5D 6C 7H 8C AC KH` (sem o `9H`) em t=116,8 s:
+
+| t | o que a leitura VIVA fez |
+|---|---|
+| 110,7 s | pisca para o conjunto alvo por **UM frame** — e é esse frame que arma o cronômetro |
+| 110,9-116,0 s | **202 frames (5,1 s)** com o `9H` de volta: o conjunto alvo não existe |
+| 116,1 s | o `9H` sai de verdade, e fica |
+| 116,8 s | a tela adota — **0,7 s depois**, em linha com a mediana de 0,57 s |
+
+Não é um caso raro nem uma partida azarada: o mesmo mecanismo produziu **25,38 s** em 20/08 17:42 e
+**7,73 s** em 12/08. Nas nove gravações, **14 das 416 medidas** de atraso passavam de 2 s, e o p99
+saía em 5,22 s.
+
+**A origem é o conserto de 2026-08-19**, que trocou um defeito pelo outro. Ele mudou a âncora para
+"a PRIMEIRA vez que a leitura viva mostrou aquele conjunto" e matou zeros falsos; o preço, não
+percebido na época, é que um piscar de um frame passa a ancorar o cronômetro arbitrariamente longe.
+**As duas âncoras óbvias erram, cada uma para um lado** — e é por isso que o conserto não é voltar
+atrás:
+
+- ancorar na PRIMEIRA aparição → o piscar isolado vira 6 ou 25 segundos;
+- ancorar na corrida CONTÍGUA → quando a leitura viva oscila na transição e a tela adota no frame de
+  uma piscada, a corrida final tem 1 frame e o atraso sai **0,00 s**. Nas nove gravações isso
+  aconteceria 24 vezes.
+
+O que separa as duas populações é que elas são separadas na natureza: a oscilação de transição é
+**densa** (vai e volta a cada poucos frames) e o piscar espúrio é **isolado**, com centenas de
+frames de outro conjunto em volta. A âncora (`app/leitura.py:_ancora`) anda de trás para frente a
+partir do frame em que a tela adotou, tolerando até `TOLERANCIA_ANCORA` frames SEGUIDOS fora do
+conjunto. Varrido nas nove gravações (416 medidas), com platô como no `fan_borda`:
+
+| tol | n | mediana | p99 | max | zeros | > 2 s | medidas perdidas |
+|---|---|---|---|---|---|---|---|
+| 0 (contígua) | 389 | 0,59 | 1,17 | 1,24 | **2** | 0 | **27** |
+| 8 | 415 | 0,60 | 1,17 | 1,58 | 0 | 0 | 1 |
+| **10** | 416 | 0,61 | 1,17 | 1,58 | **0** | **0** | **0** |
+| **16** | 416 | 0,61 | 1,18 | 1,58 | **0** | **0** | **0** |
+| **22** | 416 | 0,61 | 1,18 | 1,58 | **0** | **0** | **0** |
+| 25 | 416 | 0,61 | 1,58 | 2,96 | 0 | 3 | 0 |
+| antigo (∞) | 416 | 0,62 | **5,22** | **25,38** | 0 | **14** | 0 |
+
+De 10 a 22 nada se move, e o `n` é o mesmo do código antigo — ou seja, o conserto **não descarta
+medida nenhuma**, só as ancora certo. **16 é o meio do platô.**
+
+**A constante é FIXA de propósito, e não `config.lock_frames`** (que cairia dentro do platô): o
+`--varre lock_frames=...` existe justamente para medir o efeito daquele parâmetro no atraso, e uma
+âncora que andasse junto com ele mediria o instrumento em vez do pipeline.
+
+**O que muda na nota das nove gravações: só o máximo.** Mediana e p90 não se movem (0,57 s e 0,73 s
+continuam 0,57 s e 0,73 s em 26/08 14:12), e contradição, excesso, ordem, vaivém e cobertura ficam
+**idênticos** em todas — a mudança toca só o atraso, que é o que ela deve fazer.
+
+| gravação | max antes | max agora |
+|---|---|---|
+| 20/08 17:42 | **25,38 s** | **1,27 s** |
+| 12/08 | 7,73 s | 0,83 s |
+| 26/08 14:12 | 6,07 s | 0,74 s |
+| 19/08 16:22 | 5,63 s | 1,24 s |
+| 19/08 15:50 | 2,96 s | 1,58 s |
+
+Guardado por três testes, **conferidos por mutação nas duas direções**: com a tolerância no valor
+antigo (∞) cai o `test_piscar_isolado_da_leitura_viva_nao_arma_o_cronometro_do_atraso`, e com ela em
+0 cai o `test_oscilacao_de_transicao_NAO_vira_atraso_zero`. Sem o segundo, consertar o primeiro
+reintroduz em silêncio o defeito de 19/08.
+
+**Armadilha de método que quase passou por boa, e vale mais que o conserto:** a primeira versão do
+terceiro teste dimensionava o histórico sintético com a própria constante
+(`TOLERANCIA_ANCORA + 40` frames). Sob a mutação para o valor antigo isso alocava **um bilhão de
+frames** e a suíte TRAVAVA em vez de falhar. Um teste que trava sob mutação não prova nada — e a
+trava era fácil de ler como "o mutante passou". O vão do teste agora é fixo, com a tolerância
+conferida contra ele.
+
+**A lição, e é a terceira vez que este arquivo a registra:** o número residual acusava o pipeline e
+o culpado era o instrumento. Já tinha acontecido com a contradição (que cobrava a carta segurada à
+parte, comportamento pedido), com o excesso (que cobrava o leitor congelado) e com a ordem (que
+cobrava o empate de x). **Antes de investigar um resíduo da métrica, confira se a métrica está
+medindo o que diz medir.**
 
 ### As CARTAS FANTASMAS ao encaixar: a mão anterior ainda no ar (2026-08-26)
 

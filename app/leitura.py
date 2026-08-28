@@ -60,6 +60,71 @@ def _percentil(valores: list[float], p: float) -> float:
     return ordenados[min(len(ordenados) - 1, int(p * len(ordenados)))]
 
 
+# Quantos frames a leitura viva pode passar FORA do conjunto sem que a espera
+# pela tela seja considerada outra espera. Ver `_ancora`.
+#
+# Varrido nas NOVE gravações (416 medidas de atraso), procurando platô como no
+# `fan_borda` e no `MERGE_FACTOR`:
+#
+#   tol    n   mediana   p99     max    zeros   >2s   sem leitura viva
+#     0   389    0,59    1,17    1,24     2      0          27
+#     8   415    0,60    1,17    1,58     0      0           1
+#    10   416    0,61    1,17    1,58     0      0           0   <- platô
+#    16   416    0,61    1,18    1,58     0      0           0   <-
+#    22   416    0,61    1,18    1,58     0      0           0   <-
+#    25   416    0,61    1,58    2,96     0      3           0
+#  hoje   416    0,62    5,22   25,38     0     14           0
+#
+# De 10 a 22 nada se move: nenhuma medida falsa, nenhuma medida perdida, e o
+# mesmo n do código antigo. Abaixo de 10 começam a cair medidas em
+# `sem_leitura_viva` (a corrida fica curta demais para ser achada); a partir de
+# 25 os artefatos voltam. 16 é o meio do platô.
+#
+# É constante FIXA de propósito, e não `config.lock_frames` (que cairia dentro
+# do platô): o `--varre lock_frames=...` existe justamente para medir o efeito
+# daquele parâmetro no ATRASO, e uma âncora que andasse junto com ele mediria o
+# instrumento em vez do pipeline.
+TOLERANCIA_ANCORA = 16
+
+
+def _ancora(historia: list[tuple[float, tuple]], chave: tuple,
+            tol: int = TOLERANCIA_ANCORA) -> float | None:
+    """Desde quando a leitura viva vinha mostrando `chave`.
+
+    Anda de trás para frente a partir do frame em que a TELA adotou o conjunto,
+    enquanto a leitura viva o mostrar, tolerando até `tol` frames SEGUIDOS fora
+    dele. Devolve o instante do frame mais antigo alcançado, ou `None` se a
+    leitura viva não mostrou o conjunto na janela recente.
+
+    **A tolerância é o conserto de 2026-08-28, e ela existe porque as duas
+    âncoras óbvias estão erradas — cada uma de um jeito.** Ancorar na PRIMEIRA
+    vez que a leitura viva mostrou o conjunto (o que este módulo fazia até
+    aqui) deixa um piscar de UM frame armar o cronômetro: medido na partida de
+    26/08 14:12, a leitura viva foi ao conjunto por 1 frame em t=110,7s, voltou
+    atrás por 202 frames (5,1s) e só em t=116,1s a carta saiu de verdade — a
+    tela adotou 0,7s depois, e a métrica publicou **6,07s**. Na partida de
+    20/08 17:42 o mesmo mecanismo produziu **25,38s**. Ancorar na corrida
+    CONTÍGUA (tolerância 0) conserta o máximo mas devolve o defeito que o
+    conserto de 2026-08-19 tinha matado: quando a leitura viva oscila entre
+    dois conjuntos e a tela adota no frame de uma piscada, a corrida final tem
+    1 frame e o atraso sai 0,00s — espera nenhuma, medida como se fosse.
+
+    A tolerância separa as duas populações porque elas são separadas na
+    natureza: a oscilação de transição é densa (a leitura viva vai e volta a
+    cada poucos frames) e o piscar espúrio é isolado, com centenas de frames de
+    outro conjunto em volta.
+    """
+    falhas, melhor = 0, None
+    for k in range(len(historia) - 1, -1, -1):
+        if historia[k][1] == chave:
+            falhas, melhor = 0, k
+        else:
+            falhas += 1
+            if falhas > tol:
+                break
+    return historia[melhor][0] if melhor is not None else None
+
+
 def mede(registros: list[dict], conf_alta: float = 0.80,
          max_exemplos: int = 8) -> dict:
     """Passa a partida gravada pelo pipeline e devolve os três números.
@@ -79,12 +144,13 @@ def mede(registros: list[dict], conf_alta: float = 0.80,
        aqui — cópia diverge em silêncio. Medido na partida de 19/08: cobrando a
        carta à parte a contradição sobe de 7,5% para 9,2%.
 
-    2. **O atraso é medido a partir da PRIMEIRA vez que a leitura viva mostrou
-       aquele conjunto**, e não da última vez que ela mudou. A leitura viva
-       pisca: ela vai a B e volta a A, e a versão anterior deste código
-       reiniciava o cronômetro a cada piscada — se a tela já mostrava A, o
-       atraso saía 0,00 s e entrava na conta. Eram zeros que não correspondiam
-       a espera nenhuma e puxavam a mediana para baixo.
+    2. **O atraso é ancorado na corrida recente da leitura viva**, com
+       tolerância a piscadas — nem na primeira vez que ela mostrou o conjunto,
+       nem na última vez que ela mudou. As duas âncoras óbvias erram, cada uma
+       para um lado, e o porquê está em `_ancora`. Resumo: a primeira deixa um
+       piscar de UM frame armar o cronômetro (publicava 6,07s onde a espera foi
+       0,7s, e 25,38s numa outra partida); a última faz o atraso sair 0,00s
+       quando a tela adota no frame de uma piscada.
 
     O atraso só é medido nas trocas para uma mão NÃO vazia. Esvaziar a tela é
     governado por outro mecanismo (`fan_expire`, a mão saindo do quadro) e
@@ -98,7 +164,11 @@ def mede(registros: list[dict], conf_alta: float = 0.80,
     atrasos: list[float] = []
     trocas = 0
     sem_leitura_viva = 0
-    visto_desde: dict[tuple, float] = {}
+    # a leitura viva frame a frame DESDE a última troca de tela. Era um dict
+    # "conjunto -> primeira vez que apareceu", que não guarda QUANDO cada
+    # aparição foi e por isso não sabia distinguir um piscar isolado de uma
+    # oscilação de transição. Ver `_ancora`.
+    historia: list[tuple[float, tuple]] = []
     # começa em "tela vazia", que é o estado real antes do primeiro frame —
     # inicializar em None contaria a partida inteira como tendo uma troca a
     # mais, e `trocas` é justamente o número que denuncia tremor
@@ -152,7 +222,7 @@ def mede(registros: list[dict], conf_alta: float = 0.80,
         janela.append(Counter(d.card.code for d in leque))
 
         vivo = tuple(sorted(leitor.cards))
-        visto_desde.setdefault(vivo, ts)
+        historia.append((ts, vivo))
 
         exibida = trava.cards
         atual_ordem = tuple(exibida)
@@ -167,17 +237,19 @@ def mede(registros: list[dict], conf_alta: float = 0.80,
         if chave != exibida_antes:
             trocas += 1
             if exibida:
-                inicio = visto_desde.get(chave)
+                inicio = _ancora(historia, chave)
                 if inicio is None:
-                    # a tela mostrou um conjunto que a leitura viva nunca
-                    # mostrou inteiro. Acontece porque o StableHand soma
+                    # a tela mostrou um conjunto que a leitura viva não mostrou
+                    # na janela recente. Acontece porque o StableHand soma
                     # presença ao longo do tempo: a mão exibida é uma UNIÃO de
                     # frames. Não é atraso, é outra coisa — contar como zero
-                    # esconderia; fica em contagem própria.
+                    # esconderia; fica em contagem própria. (Nas nove gravações
+                    # em disco isto não acontece nenhuma vez com a tolerância
+                    # de hoje; é guarda, não caso comum.)
                     sem_leitura_viva += 1
                 else:
                     atrasos.append(ts - inicio)
-            visto_desde = {vivo: ts}
+            historia = [(ts, vivo)]
             exibida_antes = chave
 
         if not exibida:

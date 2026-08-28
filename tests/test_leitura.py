@@ -12,7 +12,7 @@ raio de fusão do `hand_instances`, que sai da MENOR dimensão.
 """
 
 from app.config import config
-from app.leitura import mede
+from app.leitura import TOLERANCIA_ANCORA, _ancora, mede
 from app.main import build_pipeline, process_frame
 from app.replay import detections_do_registro
 from app.tracker import GameTracker
@@ -226,3 +226,81 @@ def test_cobertura_nao_cobra_o_tempo_sem_ninguem_na_frente_da_camera():
     assert res["frames"] == 2 * ASSENTA
     assert res["atividade"] < 0.55            # metade da gravação é vazia
     assert res["cobertura"] > 0.6             # mas quando há carta, há tela
+
+
+def _historia(blocos, fps: float = FPS):
+    """Uma leitura viva frame a frame, a partir de pares (conjunto, n_frames)."""
+    hist, i = [], 0
+    for conjunto, n in blocos:
+        for _ in range(n):
+            hist.append((i / fps, tuple(sorted(conjunto))))
+            i += 1
+    return hist
+
+
+ALVO = ("3H", "5D", "6C", "7H", "8C", "AC", "KH")
+OUTRO = ALVO + ("9H",)
+
+
+def test_piscar_isolado_da_leitura_viva_nao_arma_o_cronometro_do_atraso():
+    """Um frame solto não pode virar seis segundos de espera.
+
+    É a partida de 26/08 14:12, reproduzida na forma medida: a leitura viva foi
+    ao conjunto por UM frame, voltou atrás por 202 frames (5,1 s) e só então a
+    carta saiu de verdade. A tela adotou 0,7 s depois disso — e a métrica
+    publicava **6,07 s**, ancorada no piscar. Na partida de 20/08 17:42 o mesmo
+    mecanismo publicou **25,38 s**.
+
+    O que se cobra aqui é a espera REAL: a corrida final, não a distância até
+    o piscar.
+    """
+    hist = _historia([(ALVO, 1), (OUTRO, 202), (ALVO, 28)])
+
+    inicio = _ancora(hist, ALVO)
+
+    assert inicio is not None
+    # a corrida final tem 28 frames; o piscar está a 231 frames do fim
+    assert abs((hist[-1][0] - inicio) - 27 / FPS) < 1e-9
+
+
+def test_oscilacao_de_transicao_NAO_vira_atraso_zero():
+    """O outro lado, e é o defeito que o conserto de 2026-08-19 matou.
+
+    Quando a leitura viva oscila entre dois conjuntos durante a transição, a
+    tela pode adotar no frame de uma piscada — e aí a corrida final tem UM
+    frame. Ancorar na corrida contígua devolveria 0,00 s: espera nenhuma,
+    medida como se fosse. A tolerância existe para atravessar a oscilação e
+    achar onde ela começou.
+
+    Sem este teste, consertar o piscar isolado (o teste acima) reintroduz o
+    zero falso — as duas âncoras óbvias erram cada uma para um lado.
+    """
+    hist = _historia([(OUTRO, 60)]
+                     + [(ALVO, 2), (OUTRO, 3)] * 8
+                     + [(ALVO, 1)])
+
+    inicio = _ancora(hist, ALVO)
+
+    assert inicio is not None
+    espera = hist[-1][0] - inicio
+    assert espera > 30 / FPS       # atravessou a oscilação inteira
+    assert espera < 60 / FPS       # e não vazou para o bloco anterior
+
+
+def test_a_ancora_ignora_o_conjunto_que_a_leitura_viva_nao_mostrou():
+    """Conjunto ausente da janela recente não é atraso — é outra coisa.
+
+    O `StableHand` soma presença ao longo do tempo, então a mão exibida pode
+    ser uma UNIÃO de frames que nunca existiu inteira na leitura viva. Contar
+    isso como zero esconderia; a métrica publica em contagem própria
+    (`sem_leitura_viva`).
+    """
+    vao = 200
+    # o vão é FIXO, e a tolerância é conferida contra ele em vez de dimensioná-lo:
+    # dimensionar o histórico pela constante fazia este teste alocar um bilhão de
+    # frames quando ela era mutada para o valor antigo, e um teste que TRAVA sob
+    # mutação não prova nada — foi assim que ele quase passou por bom.
+    assert TOLERANCIA_ANCORA < vao
+    hist = _historia([(ALVO, 5), (OUTRO, vao)])
+
+    assert _ancora(hist, ALVO) is None
