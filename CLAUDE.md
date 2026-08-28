@@ -1500,6 +1500,110 @@ certa, o botão é que era outro): `lock_frames` de 20 a 48 não mexe no vaivém
 Guardado por `test_vaga_que_sumiu_ha_muito_sai_da_TELA_sem_morrer` — que verifica os dois lados: a
 carta sai da tela E volta no primeiro frame em que reaparece.
 
+### O ÍNDICE DEITADO é o que o modelo perde — e a partida de 28/08 é a única que tem a condição
+
+Partida de teste gravada em 2026-08-28 (7,8 min, 45,7% dos frames com carta), a pedido do usuário,
+que ainda não tem o baralho oficial da live. Ela é **a pior de todas as notas recentes**, e vale
+como caso de estudo porque a causa foi rastreada até o fim e quase todas as suspeitas caíram.
+
+| | 26/08 14:12 | **28/08** |
+|---|---|---|
+| atraso até a tela | 0,57 s | 0,80 s |
+| contradição | 9,2% | 14,5% |
+| excesso (leitor vivo) | 1,6% (0,0%) | 4,4% (1,6%) |
+| ordem errada | 0,5% | 1,8% |
+| cobertura | 97,3% | 95,3% |
+| **perda de detecção** | **2,51%** | **6,06%** |
+
+**O sintoma, medido do jeito que se vê na tela:** a tela ficou sem alguma carta do leque **22,6% do
+tempo com leque**, contra 9,5% em 26/08 e 10,2% em 25/08. Não é que cada falha dure mais — a
+mediana é 0,03 s nas três — é que elas acontecem **2× mais**: 498 trechos contra 186. Os piores
+(2,4 s) caem no instante em que o jogador **encaixa** uma carta.
+
+**A cadeia é: o modelo perde a detecção → o leque pisca → a tela fica para trás.** E a perda NÃO é
+oclusão: re-detectando do vídeo, só **12-17%** dos casos são carta fisicamente tapada, contra ~50%
+medidos em 25/08 e 69% em 24/08. Na maioria a carta está visível e o modelo responde — a
+**0,05-0,29**, logo abaixo do limiar de 0,30.
+
+**A causa que sobrevive à medição: o índice chega GIRADO.** A proporção largura/altura da caixa é o
+proxy de rotação que este arquivo já usa (índice em pé ~0,6; deitado ~1,2). Medido DENTRO de cada
+gravação, que é o controle que importa — mesmo baralho, mesma luz, mesma pessoa:
+
+| proporção da caixa | 26/08 — perda | **28/08 — perda** |
+|---|---|---|
+| 0,6-0,7 (em pé) | 0,96% | 1,82% |
+| 0,9-1,0 | 0,97% | 3,79% |
+| ≥1,2 (deitado) | 2,42% | **6,49%** |
+| **fração do leque nessa faixa** | **9,2%** | **22,9%** |
+
+Duas coisas se somam: **2,5× mais índices deitados** e **cada um falha 2-3× mais**. O usuário abriu
+o leque mais achatado nesta partida.
+
+**Sete hipóteses medidas e DESCARTADAS na mesma sessão** (nenhuma delas explica, não repetir):
+
+| hipótese | o que a medição deu |
+|---|---|
+| enquadramento | o índice está 33% MAIOR (120×146 px contra 90×116) |
+| confiança degradada | p50 = 0,95 nas duas |
+| tremor / casamento de vaga | 0,6% dos deslocamentos acima do raio de 50 px |
+| leque apertado | controle dentro do frame: vão 0,49 na perdida contra 0,54 na base |
+| estouro de luz | fundo mais escuro (78 contra 112) e carta mais clara (160 contra 128), mas o **contraste dentro do índice SUBIU** (58,6 contra 53) |
+| escala (leque perto demais) | na MESMA faixa de tamanho de índice, 28/08 perde 2-4× mais |
+| leque enfileirado, sem arco | arco 1,54 alturas de índice, dentro da faixa normal (1,36-1,89) |
+
+**Fica em aberto, e é honesto dizer:** mesmo faixa a faixa de rotação, 28/08 perde ~2× mais que
+26/08. A rotação explica parte, não tudo.
+
+**O dado difícil desta gravação NÃO serve para treinar, e a auditoria é que salvou.** Das 25
+amostras extraídas pelo `extrai_dificeis.py`, **só 8 sobreviveram** — e duas das reprovadas
+(`10D` rotulado sobre um índice que é claramente o `2♦`) teriam ensinado rótulo errado. O resto são
+caixas caídas sobre **pips no meio da carta**, sem glifo. E as 8 boas são o mesmo `J♥`, o mesmo
+`2♦` e um `3♦` quase na mesma pose — 3 situações distintas, não um conjunto. Abaixo do ruído de
+rodada (~0,3 ponto). **Não foi treinado.**
+
+**O que esta gravação vale, e é muito: ela é o conjunto de teste que faltava.** A tentativa de
+25/08 de abrir o leque do gerador (`ABERTURA` 150→180, o `cards_backup_12`) foi reprovada por não
+mexer na perda — mas foi medida em gravações onde só ~9% do leque chegava deitado, ou seja, num
+conjunto que quase não tinha a condição que a mudança atacava. Guarde esta gravação para testar
+qualquer conserto de ROTAÇÃO.
+
+**O teste que essa gravação permitiu, e o veredito (2026-08-28).** Com os dois modelos lendo o
+MESMO vídeo (`replay.py --redetectar`, que só vale modelo contra modelo), a perda de detecção:
+
+| gravação | leque deitado (≥1,0) | `cards_backup_11` (produção) | `cards_backup_12` (abertura 180) |
+|---|---|---|---|
+| 28/08 | **33,7%** | 6,51% | **5,98%** |
+| 11/08 | 30,0% | 3,98% | **3,68%** |
+| 19/08 16:22 | 23,9% | **4,97%** | 6,00% |
+| 26/08 14:12 | 20,2% | **2,47%** | 2,52% (empate) |
+
+O `backup_12` ganha nas DUAS gravações com mais índice deitado e não ganha nas duas com menos — a
+previsão feita antes de medir 26/08 se confirmou (empate ali). **Mas a história não é limpa**: em
+19/08 16:22, com 23,9% de rotação, ele perde por 1,03 ponto, o que não cabe numa curva monotônica.
+(Ressalva: os números de 11/08 e 19/08 vêm da sessão de 25/08, não foram re-medidos hoje.)
+
+**E o que decide é a TELA, onde ele não ganha.** Na própria 28/08, com os dois modelos:
+contradição **11,9% → 13,1%**, ordem 1,8% → 2,1%, excesso igual, cobertura 94,9% → 95,4%, atraso
+0,79 → 0,75 s. Ou seja: o `backup_12` acha mais carta e a tela fica igual ou pior — que é
+exatamente o que este arquivo já registra ("consertar o modelo aparece na perda de detecção, não na
+tela — e a tela é o que o usuário vê").
+
+**O modelo em produção continua o `cards_backup_11`.** O que muda é o conhecimento: a reprovação de
+25/08 valia, mas agora se sabe que o efeito da abertura do gerador é **condicional à rotação**, e
+que existe uma gravação com a condição para testar.
+
+**Duas notas operacionais desta sessão:**
+
+- **Gravar corta a taxa de quadros pela metade** — 50-57 fps sem gravar, 29-36 gravando (medido no
+  perfil por bloco de 30 s: começa em 41-47 e assenta). Como todo parâmetro é contado em QUADROS, a
+  tela passa a trocar em 0,65 s em vez de 0,35 s, o que infla atraso e contradição. Ao comparar uma
+  partida gravada com uma não gravada, desconte isto.
+- **Matar o app sem encerrá-lo quebra o índice do AVI.** Os dados continuam todos no arquivo (3,66
+  GB ÷ 15.843 frames = 231 KB/frame, que fecha), mas `CAP_PROP_FRAME_COUNT` passa a mentir (disse
+  5.143) e **`CAP_PROP_POS_FRAMES` devolve o quadro errado** — as caixas anotadas saem deslocadas e
+  a leitura visual engana. Conserto: ler o vídeo SEQUENCIALMENTE. Sintoma que denuncia: contagem de
+  frames do AVI muito menor que a do `sessao.jsonl`.
+
 ### O primeiro número AO VIVO do modelo novo (2026-08-25 19:30)
 
 Partida gravada no dia com o modelo publicado, 12,1 min a **37 fps** — e é a única medição desta
