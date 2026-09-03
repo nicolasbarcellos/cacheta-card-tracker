@@ -58,6 +58,35 @@ ap.add_argument("imgsz", nargs="?", type=int, default=1280)
 ap.add_argument("batch", nargs="?", type=int, default=6)
 ap.add_argument("--holdout", action="append", default=[], metavar="PARTIDA",
                 help="partida de datasets/real/ a NÃO treinar (pode repetir)")
+# ESPELHAMENTO. O Ultralytics aplica `fliplr=0.5` por padrão, e este script
+# nunca o desligou — ou seja, metade das imagens de treino de TODOS os modelos
+# publicados até 2026-09-03 entrou espelhada. Um índice de carta espelhado não é
+# uma carta: o glifo do valor é QUIRAL (um "5" espelhado não é um 5), enquanto
+# os pips dos quatro naipes são simétricos. O padrão portanto ensina o modelo a
+# ser invariante à esquerda-direita justamente no sinal que separa as classes,
+# e cobra isso de um modelo de 3,0 M de parâmetros.
+# DESLIGÁ-LO FOI MEDIDO E REPROVADO em 2026-09-03, então não refaça sem motivo
+# novo: A/B com o MESMO dado e os MESMOS pesos de partida deu perda de detecção
+# 5,45% (fliplr=0.5) contra 6,03% (fliplr=0.0) em 28/08, e 2,62% contra 2,66%
+# em 26/08 — pior nas duas. A hipótese continua boa no papel; o que ela ignora é
+# que o espelhamento age como REGULARIZADOR quando há só 1.133 amostras reais.
+ap.add_argument("--fliplr", type=float, default=0.5,
+                help="espelhamento horizontal (padrão do Ultralytics: 0.5; "
+                     "0 desliga — medido e REPROVADO, ver o comentário)")
+# ROTAÇÃO. Também nunca foi ligada (`degrees=0.0`). O alvo aberto do projeto é o
+# ÍNDICE DEITADO — medido em 2026-09-03, o índice muito deitado perde 3x a 8x
+# mais detecção que o em pé — e a rotação real vem da geometria do leque, que só
+# o sintético produz. NUNCA foi testada. Cuidado ao ligar: a caixa do YOLO é
+# alinhada aos eixos, então girar a imagem INCHA a caixa de um índice estreito e
+# alto, ensinando geometria errada.
+ap.add_argument("--degrees", type=float, default=0.0,
+                help="rotação do augment, em graus (padrão 0)")
+ap.add_argument("--nome", default="finetune-fans",
+                help="nome da pasta em training/runs/ (para não colidir num A/B)")
+ap.add_argument("--nao-publicar", action="store_true",
+                help="não sobrescreve models/cards.pt — só deixa o best.pt. "
+                     "É o que permite rodar dois braços de um A/B a partir dos "
+                     "MESMOS pesos de partida")
 args = ap.parse_args()
 EPOCHS, IMGSZ, BATCH = args.epochs, args.imgsz, args.batch
 
@@ -166,14 +195,17 @@ def main():
           f"({n_real} amostras reais no treino = {share:.0f}%)")
 
     # backup do modelo atual antes de sobrescrever
-    n = 1
-    while (backup := MODEL.with_name(f"cards_backup_{n}.pt")).exists():
-        n += 1
-    shutil.copy(MODEL, backup)
-    print(f"backup: {backup}")
+    backup = None
+    if not args.nao_publicar:
+        n = 1
+        while (backup := MODEL.with_name(f"cards_backup_{n}.pt")).exists():
+            n += 1
+        shutil.copy(MODEL, backup)
+        print(f"backup: {backup}")
 
     model = YOLO(str(MODEL))
-    print(f"treino: epochs={EPOCHS} imgsz={IMGSZ} batch={BATCH}")
+    print(f"treino: epochs={EPOCHS} imgsz={IMGSZ} batch={BATCH} "
+          f"fliplr={args.fliplr} degrees={args.degrees}")
     model.train(
         data=str(TRAINSET / "data.yaml"),
         epochs=EPOCHS,    # menos épocas: evita fixar demais no sintético
@@ -183,12 +215,21 @@ def main():
         batch=BATCH,      # imgsz maior consome mais VRAM
         mosaic=0.0,       # mosaico descaracteriza o layout de leque
         scale=0.2, translate=0.05,  # augment moderado
+        # os dois abaixo eram deixados no padrão do Ultralytics, o que ligava o
+        # espelhamento em metade das imagens sem ninguém ter decidido isso —
+        # ver o comentário no argparse
+        fliplr=args.fliplr,
+        degrees=args.degrees,
         project=str(ROOT / "runs"),
-        name="finetune-fans",
+        name=args.nome,
         exist_ok=True,
     )
 
-    best = ROOT / "runs" / "finetune-fans" / "weights" / "best.pt"
+    best = ROOT / "runs" / args.nome / "weights" / "best.pt"
+    if args.nao_publicar:
+        print(f"\nNAO publicado (--nao-publicar). Pesos em {best}")
+        print(f"para publicar: copy {best} {MODEL}")
+        return
     shutil.copy(best, MODEL)
     print(f"\nnovo modelo publicado em {MODEL}")
     print(f"se piorar, volte com: copy {backup} {MODEL}")

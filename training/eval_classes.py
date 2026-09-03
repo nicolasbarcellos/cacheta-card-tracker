@@ -103,6 +103,21 @@ print(f"validacao: {len(val)} imagens — {fonte}\n", flush=True)
 # abertura do leque por imagem: num leque FECHADO os índices ficam quase na
 # mesma altura; num ABERTO descrevem um arco. A dispersão vertical é o proxy.
 por_abertura: list = []
+# ROTAÇÃO do índice, pela proporção largura/altura da caixa VERDADEIRA (em px):
+# índice em pé ~0,6, deitado >=1,0. É o proxy que o projeto já usa.
+#
+# Existe porque a média global é CEGA ao alvo aberto. Medido em 2026-09-03: a
+# carta que o modelo perde tem caixa com p50 1,08-1,25 e é deitada em 54-65%
+# dos casos, contra 30% da base — em TODAS as dez gravações a perda é mais
+# deitada que a base. E o conjunto de validação `holdout-ranks`, que julga todo
+# retreino, tem **0,7%** de índice deitado: ele não consegue ver o defeito que
+# se está tentando consertar. É a terceira vez que um instrumento de aceite
+# deste projeto aprova um erro que aparece ao vivo (as outras duas: o K♠→A♠
+# medido em sintético, e a carta inventada, que só o `eval_negativos` vê).
+#
+# Use um conjunto REAL de partida (`datasets/real/<partida>`), que é o único
+# com a condição: 30,2% dos rótulos ali são deitados.
+por_rotacao: list = []
 total = achados = certos = 0
 erros: Counter = Counter()
 por_classe: dict = defaultdict(lambda: [0, 0])
@@ -149,10 +164,13 @@ for k, (img_path, label_path) in enumerate(val):
         code = g[0]
         total += 1
         por_classe[code][1] += 1
+        # proporção da caixa VERDADEIRA, em px: o proxy de rotação do índice
+        razao = g[3] / g[4] if g[4] else 0.0
         cands = atribuidas.get(i)
         if not cands:
             erros["nao detectado"] += 1
             por_abertura.append((abertura, False))
+            por_rotacao.append((razao, False, False))
             continue
         achados += 1
         melhor = max(cands, key=lambda p: p[1])
@@ -160,6 +178,7 @@ for k, (img_path, label_path) in enumerate(val):
         dy_all.append(melhor[3] - g[2])
         acertou = melhor[0] == code
         por_abertura.append((abertura, acertou))
+        por_rotacao.append((razao, True, acertou))
         if acertou:
             certos += 1
             por_classe[code][0] += 1
@@ -191,6 +210,38 @@ if por_abertura:
         sel = [ok for ab, ok in por_abertura if lo <= ab < hi]
         if sel:
             print(f"    {nome}  {100*sum(sel)/len(sel):5.1f}%  (n={len(sel)})")
+
+if por_rotacao:
+    # ROTAÇÃO: detecção E classe por faixa. A coluna que importa para o alvo
+    # aberto é a de DETECÇÃO — a carta que some é a deitada —, e a média global
+    # esconde isso porque só 18-30% dos rótulos são deitados (0,7% no
+    # `holdout-ranks`).
+    faixas_rot = [(0.00, 0.70, "em pe     "), (0.70, 0.90, "inclinado "),
+                  (0.90, 1.00, "quase deit"), (1.00, 1.20, "deitado   "),
+                  (1.20, 9.99, "muito deit")]
+    print("\n  acerto por ROTACAO do indice (larg/alt da caixa verdadeira):")
+    print("    faixa            n   detectados  classe correta")
+    for lo, hi, nome in faixas_rot:
+        sel = [(d, a) for r, d, a in por_rotacao if lo <= r < hi]
+        if not sel:
+            continue
+        det = sum(1 for d, _a in sel if d)
+        ok = sum(1 for _d, a in sel if a)
+        print(f"    {nome} {len(sel):6d}   {100 * det / len(sel):8.1f}%   "
+              f"{100 * ok / len(sel):11.1f}%")
+    deitados = [(d, a) for r, d, a in por_rotacao if r >= 1.0]
+    fatia = len(deitados) / len(por_rotacao)
+    if deitados:
+        print(f"    >>> DEITADO (>=1,0): {len(deitados)} indices = "
+              f"{100 * fatia:.1f}% do conjunto | detectados "
+              f"{100 * sum(1 for d, _a in deitados if d) / len(deitados):.1f}%"
+              f" | classe "
+              f"{100 * sum(1 for _d, a in deitados if a) / len(deitados):.1f}%")
+    if fatia < 0.05:
+        print("    !! este conjunto quase NAO TEM indice deitado: ele e CEGO ao "
+              "alvo aberto do projeto.\n       Meca tambem num "
+              "training/datasets/real/<partida>, onde 30% dos rotulos sao "
+              "deitados.")
 
 print("\n  15 piores classes (>= 10 amostras):")
 piores = sorted(((c[0] / c[1], code, c[1]) for code, c in por_classe.items()

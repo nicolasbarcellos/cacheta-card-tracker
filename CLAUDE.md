@@ -65,6 +65,13 @@ frames em que UMA vaga do leitor perdeu a detecção, re-detecta do vídeo a 0,0
 **4,20% → 3,98%** (11/08), as duas gravações fora do treino, sem custar classe nem carta inventada.
 Ver "Retreino de 2026-08-25".
 
+**REFINADO em 2026-09-03, e o alvo agora tem número próprio.** A perda não está espalhada: ela é
+**3 a 8 vezes maior no índice muito deitado** do que no índice em pé, e isso se manteve em duas
+gravações e três modelos. Antes de tentar consertar de novo, leia "A perda é do índice DEITADO" —
+lá estão o instrumento novo (`training/eval_rotacao.py`), as **três hipóteses reprovadas no mesmo
+dia** (baixar o limiar, desligar o espelhamento, e a leitura antiga da abertura do gerador) e o
+**piso de ruído recalibrado: ~1 ponto, não 0,3**.
+
 ### O que a métrica diz hoje, e o número que ninguém tinha medido (2026-08-20)
 
 As duas partidas gravadas em 19/08 (12,8 min e 23,0 min, ~29 fps), medidas pelo `mede_leitura.py`
@@ -412,6 +419,11 @@ python training/eval_classes.py models/cards_backup_4.pt 150   # o anterior, MES
 
 # quantas cartas o modelo INVENTA onde nao ha carta (o eval_classes e cego p/ isso)
 python training/eval_negativos.py models/cards.pt training/datasets/negativos-holdout
+
+# ONDE o modelo perde: perda de deteccao por ROTACAO do indice, modelo x modelo
+# no MESMO video. Os outros tres instrumentos sao cegos a isto -- ver
+# "A perda e do indice DEITADO".
+python training/eval_rotacao.py gravacoes/<data> sessao-cards.jsonl sessao-cards_novo.jsonl
 ```
 
 `eval_classes.py` é o instrumento de aceite de um retreino — não confie no mAP do Ultralytics, que
@@ -1604,6 +1616,145 @@ que existe uma gravação com a condição para testar.
   a leitura visual engana. Conserto: ler o vídeo SEQUENCIALMENTE. Sintoma que denuncia: contagem de
   frames do AVI muito menor que a do `sessao.jsonl`.
 
+### A perda é do índice DEITADO, e os instrumentos de aceite eram cegos a isso (2026-09-03)
+
+Sessão inteira em disco, sem webcam. O alvo era a perda de detecção de 28/08. O que mudou não foi
+o modelo — foi saber **onde** ele perde, e descobrir que nenhum instrumento do projeto enxergava
+aquilo.
+
+#### O gradiente, que é o achado durável
+
+`training/eval_rotacao.py` reparte a taxa de perda por proporção largura/altura da caixa (o proxy
+de rotação que este arquivo já usa: em pé ~0,6, deitado ≥1,0). Nas duas gravações com vídeo
+recente, com **três** modelos diferentes lendo o mesmo vídeo:
+
+| faixa | 28/08 (3 modelos) | 26/08 14:12 (3 modelos) | fatia do leque |
+|---|---|---|---|
+| em pé (<0,7) | 3,4-4,4% | 1,4-1,6% | ~40% |
+| inclinado (0,7-0,9) | 2,4-5,0% | 1,3-1,7% | 24-30% |
+| quase deitado (0,9-1,0) | 3,5-5,3% | 2,6-3,6% | 4-9% |
+| deitado (1,0-1,2) | 5,3-7,4% | 2,3-2,8% | 12% |
+| **muito deitado (≥1,2)** | **13,5-14,2%** | **11,1-11,8%** | **8-19%** |
+
+O gradiente é de 3× a 8× e **não se move com o modelo** — os três modelos concordam faixa a faixa.
+É a caracterização que faltava: não é "a partida de 28/08 foi ruim", é que 28/08 tinha 18,6% do
+leque na faixa que perde 14%, contra 8,1% em 26/08.
+
+Confirmado por um caminho independente, nas **dez** gravações em disco: a caixa da carta que some é
+sistematicamente mais deitada que a base (28/08: 65,2% deitada contra 30,3%; 11/08: 54,1% contra
+29,8%). A direção **nunca se inverte**, embora em três gravações ela seja plana.
+
+#### Os três instrumentos de aceite são cegos a este defeito
+
+É a terceira vez que isto acontece no projeto (as outras: o K♠→A♠ aprovado pelo sintético em 12/08,
+e a carta inventada, que só o `eval_negativos.py` vê). Aqui são três de uma vez:
+
+- **`eval_classes.py` num `datasets/real/<partida>` dá 100,0% de detecção POR CONSTRUÇÃO.** O
+  `extrai_gravacao.py` só guarda frame em que `alinhado()` passa, ou seja **em que todas as cartas
+  foram detectadas** — o conjunto de validação real é purgado exatamente da falha que deveria
+  medir. Este arquivo publica "índices detectados: 100,0%" desde 20/08 como se fosse um resultado.
+  Medido de novo hoje no `cards_backup_11`: 100,0% de detecção E 100,0% de classe em 1.082 índices,
+  incluindo os 36,4% deitados. Não é um modelo perfeito, é um conjunto que não pode reprovar.
+- **`holdout-ranks` tem 0,7% de índice deitado**, contra 30,2% dos rótulos das partidas reais. Ele
+  não contém a condição. (Distribuição pixel-equivalente dos rótulos: `real/*` p50 0,78 e 30,2%
+  deitado — igual ao leque ao vivo; `synthetic` 0,64 e 18,4%; `local` 0,63 e 15,1%.)
+- **A taxa global do `extrai_dificeis --so-analise` mistura as faixas**, e o alvo está em ~⅕ da
+  amostra.
+
+`eval_classes.py` passou a publicar acerto **por faixa de rotação** (detecção e classe), e avisa
+quando o conjunto tem menos de 5% de índice deitado — isto é, quando ele não pode ver o alvo.
+
+**ARMADILHA DE UNIDADE, e eu caí nela primeiro:** o rótulo YOLO guarda largura e altura
+NORMALIZADAS pelo quadro, então a razão larg/alt de um rótulo já vem multiplicada por (H/W) = 9/16.
+A razão medida na caixa em px (`app/detector`) não é a mesma grandeza. Comparar as duas direto
+exagera a diferença em 1,78× — foi assim que "o treino quase não tem índice deitado" (2,2%) virou,
+depois da conversão, "o treino tem 18,4%, e quem não tem é a validação".
+
+#### A leitura da abertura do gerador estava errada
+
+O `cards_backup_12` (gerador com `ABERTURA` 180) ganha da produção no global de 28/08 (5,98% contra
+6,51%) e isso vinha sendo lido como "a abertura ajuda onde há rotação". A repartição diz o
+contrário: ele melhora **em pé** (4,37 → 3,78) e **inclinado** (4,95 → 2,51) e **PIORA as duas
+faixas deitadas** (5,95 → 6,65 e 14,24 → 14,99). O ganho nunca veio da rotação. A conclusão de
+25/08 ("o efeito da abertura é condicional à rotação") **cai**; o `backup_12` continua não
+publicado, agora pelo motivo certo.
+
+#### Três hipóteses medidas e REPROVADAS (não repetir)
+
+**1. Baixar o `min_confidence`.** A medição de 28/08 dizia que nas perdas o modelo responde a
+0,05-0,29, logo abaixo do limiar — o que sugeria que baixar o limiar recuperaria a carta. Nunca
+tinha sido testável, porque as gravações já vêm filtradas em 0,30; foi preciso re-detectar o vídeo
+a 0,05. Varrido de 0,05 a 0,30 na mesma gravação:
+
+| conf | perda | contradição | excesso | ordem | cobertura |
+|---|---|---|---|---|---|
+| 0,05 | 8,16% | 11,4% | 7,1% | 0,4% | 92,9% |
+| 0,20 | 7,06% | 11,2% | 6,4% | 1,7% | 95,4% |
+| **0,30 (hoje)** | **6,51%** | 11,9% | 5,2% | 1,8% | 94,9% |
+
+Nenhum limiar bate 0,30, e a perda até **sobe** ao baixar — detecção fraca cria vaga espúria, que
+depois falta. Corolário de método: **a taxa de perda não é comparável entre limiares**, só entre
+modelos no mesmo limiar. É o mesmo defeito já registrado na contagem de buracos.
+
+**2. Desligar o espelhamento (`fliplr`).** O `finetune_local.py` nunca definiu `fliplr`, então valia
+o padrão do Ultralytics — **`fliplr=0.5`, metade das imagens de treino de todos os modelos já
+publicados entrou espelhada**. O argumento contra era forte: o glifo do valor é QUIRAL (um "5"
+espelhado não é um 5), enquanto os pips dos quatro naipes são simétricos, e nenhuma carta real
+aparece espelhada — 50% do treino vem de uma distribuição que não existe na inferência.
+A/B com o MESMO dado e os MESMOS pesos de partida (`--fliplr`, `--nome` e `--nao-publicar` foram
+acrescentados ao script para isso):
+
+| | 28/08 | 26/08 14:12 |
+|---|---|---|
+| produção (`cards_backup_11`) | 6,51% | **2,47%** |
+| A — `fliplr=0.5` (controle) | **5,45%** | 2,62% |
+| B — `fliplr=0.0` | 6,03% | 2,66% |
+
+B perde para o controle nas duas. **Reprovado** — provavelmente o espelhamento age como
+regularizador com só 1.133 amostras reais, e o custo teórico não se materializa. O
+`fliplr` fica no padrão, agora explícito e comentado no script.
+
+**3. Publicar o braço A.** Ele ganha 1,06 ponto em 28/08 — e perde 0,15 em 26/08. Direções opostas,
+que é a assinatura de ruído. Pela regra do próprio repositório ("o único que melhorou nas DUAS
+gravações"), não substitui nada. **O modelo em produção continua o `cards_backup_11`.**
+
+#### O piso de ruído é ~1 ponto, não 0,3
+
+E este é o corolário que recalibra as conclusões anteriores. O braço A é a **mesma receita** do
+`cards_backup_11` — conferida número a número: 2.988 imagens, 1.133 reais (38%), 55 negativos
+(1,8%) — e mesmo assim mexeu **1,06 ponto** de perda global numa gravação. O CLAUDE.md estimava
+0,3 ponto a partir de duas rodadas que diferiam só na amostra sintética. Com 1 ponto de ruído,
+vários "resultados" de 25/08 (as diferenças de 0,2-0,3 entre `backup_10`, `11` e `12`) **não são
+resultado**. Exija ganho nas duas gravações, e desconfie de qualquer coisa abaixo de 1 ponto numa
+gravação só.
+
+#### De que é feita a perda, agora com a resposta abaixo do limiar em disco
+
+Com o vídeo re-detectado a 0,05 dá para perguntar o que o modelo responde onde a vaga previu a
+carta. Na previsão mais fresca (`misses == 1`, 399 vagas-frame de 28/08):
+
+| | | caixa larg/alt | deitada |
+|---|---|---|---|
+| CEGO — nada ali nem a 0,05 | 24,1% | — | — |
+| PIPELINE descartou (entregue ≥ 0,30) | 1,0% | 0,88 | 0% |
+| **SÓ LIMIAR** — classe certa, < 0,30 | **30,1%** | **1,90** | **69%** |
+| **CLASSE errada no lugar** | **44,9%** | **1,42** | **68%** |
+
+**75% da perda é o modelo respondendo a um índice deitado** — e a maior fatia é classe ERRADA, não
+confiança baixa, que é a razão de fundo de baixar o limiar não funcionar. Isto **corrige** o
+"12-17% de oclusão" que este arquivo registrava para 28/08: aquele número veio da população já
+filtrada do `extrai_dificeis` (uma vaga perdida, código único, `misses` ≤ 12), não de todas as
+perdas. Sobre todas, a oclusão é 24%.
+
+#### Uma armadilha em disco, deixada por uma sessão anterior
+
+`training/datasets/real/20260828-144911-dificeis` tem **25 imagens com `review/` intacto**, mas o
+CLAUDE.md registra que só 8 passaram na auditoria e que a pasta NÃO foi treinada — as 17 rejeitadas
+nunca foram apagadas de `review/`, que é o mecanismo de rejeição que o `finetune_local.py`
+respeita. Um treino rodado sem `--holdout` a puxa em silêncio, incluindo as duas que rotulam `10D`
+sobre um `2♦`. **Rejeitar uma amostra é apagar a imagem de `review/` — auditar sem apagar não
+rejeita nada.**
+
 ### O primeiro número AO VIVO do modelo novo (2026-08-25 19:30)
 
 Partida gravada no dia com o modelo publicado, 12,1 min a **37 fps** — e é a única medição desta
@@ -2063,6 +2214,64 @@ Na mesma linha, `detect_discard_cam = False` (2026-08-11): a câmera do monte é
 e não gera evento desde `f5fdf64`, mas o laço rodava o modelo nela a cada volta — metade da
 inferência gasta em nada, o que **dobrava a duração real de cada janela de votação**. Ligue apenas
 para diagnosticar aquela câmera.
+
+### O FPS que o `FpsMeter` imprime NÃO é a taxa de quadros distintos (2026-09-03)
+
+E a diferença chega a um terço do trabalho da GPU. O `CameraStream` guarda só o frame mais recente
+e o laço lê o que estiver lá: quando o laço gira mais rápido que a câmera, ele processa **a mesma
+imagem** várias vezes. Medido nas dez gravações comparando detecções byte-idênticas em frames
+consecutivos (a mão treme — duas capturas distintas nunca dão as mesmas caixas):
+
+| gravação | taxa do laço | frames repetidos | **taxa DISTINTA** |
+|---|---|---|---|
+| 20/08 17:42 | 47,8 | 36,8% | **30,2** |
+| 20/08 19:43 | 45,3 | 34,5% | **29,7** |
+| 26/08 14:12 | 41,8 | 24,8% | **31,4** |
+| 12/08 | 40,0 | 24,0% | **30,4** |
+| 28/08 | 34,0 | 6,2% | **31,9** |
+| 19/08 16:22 | 29,0 | 1,1% | **28,7** |
+
+A taxa distinta bate em **28-32 em TODAS**, não importa se o laço girou a 29 ou a 48. **A câmera é
+o teto, não a GPU** — medido nesta máquina, a inferência a 1280 px leva 19-22 ms (45-52 fps).
+
+Três consequências:
+
+1. **Computador melhor não compra FPS nenhum hoje.** A folga da GPU já está sendo desperdiçada
+   reprocessando imagem repetida.
+2. **O `CameraStream` nunca pede `CAP_PROP_FPS`** — define FOURCC, largura e altura e aceita o
+   padrão do DirectShow (30). Se a MX Brio fizer 1080p60, é o ganho mais barato do projeto: todo
+   parâmetro é contado em QUADROS, então dobrar a taxa distinta faz `lock_frames=20` valer 0,33 s
+   em vez de 0,67 s. **Não testado — precisa da câmera conectada.**
+3. **Mais FPS não conserta detecção.** A perda é do índice deitado (erro de classe), e ver a mesma
+   cena mais vezes por segundo não muda o palpite.
+
+#### O custo de trocar a ARQUITETURA, medido (e a estimativa antiga estava errada)
+
+O `cards.pt` é um YOLOv8 **nano: 3,02 M de parâmetros**, o menor da família. Medido nesta GPU
+(RTX 3050 Laptop, 4 GB) a 1280 px, construindo do YAML — velocidade depende da arquitetura, não
+dos pesos:
+
+| arquitetura | params | ms/frame | fps | contra a câmera (~30) |
+|---|---|---|---|---|
+| **`cards.pt` (v8n, hoje)** | 3,02 M | 22,0 | **45** | 50% de folga |
+| yolo11s | 9,46 M | 31,8 | 31,5 | empata |
+| yolov8s | 11,17 M | 33,6 | 30 | empata |
+| yolov8m | 25,9 M | 65,2 | 15 | vira o gargalo |
+
+A nota do projeto dizia "o laço cai de 41 fps para ~15-20" — **esse é o número do `m`, não do `s`**.
+O `s` cai em cima da taxa da câmera, ou seja custa ~10% de quadros distintos, não metade.
+
+O que a troca cobra, e o item 1 é o que mata: **o `s` tem outra forma de tensor, então não parte
+dos pesos atuais** — começaria do COCO, jogando fora ~10 rodadas de fine-tuning desde julho (o pip
+do naipe, os negativos, o dado difícil, o dado real das partidas). Mais: treino a batch 1-2 nestes
+4 GB, 1-2 h por rodada; a folga de FPS que hoje permite gravar some; e todos os parâmetros contados
+em quadros mudam de significado.
+
+**Alavanca mais barata a testar antes**: subir o `imgsz` de 1280 para 1600 custa quase o mesmo em
+FPS (27,8 ms contra 33,6 do `s`), ataca o índice pequeno/girado e **preserva o fine-tuning**. Custo
+do `imgsz` nesta GPU: 640 → 18,1 ms · 960 → 16,1 · 1280 → 19,0 · 1600 → 27,8 · 1920 → 31,1.
+Exige retreinar na mesma resolução: este modelo é **preso à escala**, e isso está medido em
+"Dado DIFÍCIL" (ampliar o recorte 4× fez o modelo não detectar nada em 28 de 31 casos).
 
 ## Notas
 
