@@ -87,6 +87,13 @@ ap.add_argument("--fliplr", type=float, default=0.5,
 # alto, ensinando geometria errada.
 ap.add_argument("--degrees", type=float, default=0.0,
                 help="rotação do augment, em graus (padrão 0)")
+# WORKERS do dataloader. O padrao do Ultralytics e 8, e nesta maquina (16 GB,
+# imgsz=1280) ele derruba o treino no meio com "Couldn't open shared event" /
+# "Pin memory thread exited unexpectedly" -- e falha de memoria compartilhada
+# entre processos do Windows, nao de VRAM. Medido em 2026-09-14: com 2 o treino
+# atravessa. Custa um pouco de velocidade e nao toca no resultado.
+ap.add_argument("--workers", type=int, default=2,
+                help="processos do dataloader (padrao 2: 8 quebra no Windows)")
 ap.add_argument("--nome", default="finetune-fans",
                 help="nome da pasta em training/runs/ (para não colidir num A/B)")
 ap.add_argument("--nao-publicar", action="store_true",
@@ -255,6 +262,7 @@ def main():
         # os dois abaixo eram deixados no padrão do Ultralytics, o que ligava o
         # espelhamento em metade das imagens sem ninguém ter decidido isso —
         # ver o comentário no argparse
+        workers=args.workers,
         fliplr=args.fliplr,
         degrees=args.degrees,
         project=str(ROOT / "runs"),

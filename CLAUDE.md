@@ -1780,6 +1780,55 @@ quem se perde é o pip ou o glifo. Use a validação sintética como triagem rá
 retreino que ataque rotação — com a ressalva de sempre: é in-distribution, então prova sensibilidade
 ao defeito, não generalização. Confirmar continua sendo com `eval_rotacao.py` nas gravações.
 
+#### Rotação no AUGMENT (`degrees=10`): REPROVADO, e o motivo é o RÓTULO (2026-09-14)
+
+Primeira tentativa de atacar o alvo reescrito (invariância à rotação). A/B com a receita do
+`backup_11` reproduzida número a número (2.988 imagens, 1.133 reais = 38%, 55 negativos = 1,8%,
+holdouts `20260811-211614` e `20260819-162252-dificeis`), contra o controle `ab-fliplr05` treinado
+em 03/09 com a mesma receita.
+
+**Critério 1 — triagem no sintético** (classe por faixa; é o instrumento que enxerga o alvo):
+
+| faixa | controle | `degrees=10` |
+|---|---|---|
+| em pé | 98,4% | 98,5% |
+| deitado | 98,7% | 97,4% |
+| **muito deitado** | **89,2%** | **86,7%** |
+| deitado (≥1,0) total | 93,9% | **91,9%** |
+
+**Critério 2 — `eval_rotacao` ao vivo**, os dois modelos lendo o MESMO vídeo:
+
+| faixa | 28/08 controle → braço | 26/08 14:12 controle → braço |
+|---|---|---|
+| **muito deitado** | 13,62% → **13,48%** | 11,78% → **13,87%** |
+| GLOBAL | 5,45% → 5,16% | 2,62% → **3,09%** |
+
+Plano no 28/08 (0,14 ponto, fundo do ruído) e **pior no 26/08** (2,1 pontos na faixa alvo, acima do
+piso). Pela regra do repositório — ganho nas DUAS gravações e acima de ~1 ponto — está reprovado.
+
+**O mecanismo estava escrito no comentário do próprio parâmetro, e agora tem número.** A caixa do
+YOLO é alinhada aos eixos, então o augment gira a imagem e recalcula a caixa a partir dos CANTOS DA
+CAIXA ANTIGA, não do glifo. Numa caixa de 45×91 (a mediana do índice em pé), girar 10° dá
+60×97: **+33% de largura e +43% de área**. O modelo é treinado com caixa frouxa, e a diversidade de
+rotação que ele ganha não paga isso.
+
+**A lição que generaliza: rotação no AUGMENT e rotação no GERADOR não são a mesma coisa, e a
+diferença é o rótulo.** O gerador gira a carta e calcula a caixa do polígono do índice **já
+transformado** (`bbox_of(templates[code][1], mats[i])`) — exata em qualquer ângulo. O `degrees` não
+tem como fazer isso, porque no momento do augment o polígono já virou caixa. Qualquer ataque futuro
+à rotação tem de vir do gerador, **não** do `degrees`. Ele fica no script, documentado e em 0.
+
+**A triagem acertou o veredito, e este foi o primeiro teste dela como PREVISOR**: reprovou no
+sintético (89,2 → 86,7) e o decisor ao vivo confirmou. Uma concordância não a valida — mas já é
+mais do que os três instrumentos antigos conseguiam, que era não ver nada.
+
+**Achado operacional da mesma sessão:** o treino quebrava no meio com `Couldn't open shared event` /
+`Pin memory thread exited unexpectedly`. É memória compartilhada entre processos do Windows, **não**
+VRAM (sobravam 8,7 GB de RAM e 3 GB de VRAM). Causa: o `workers=8` padrão do Ultralytics com
+`imgsz=1280`. O `finetune_local.py` ganhou `--workers`, com padrão **2**, que atravessa.
+
+Pesos do braço reprovado em `training/runs/ab-degrees10/weights/best.pt` (não publicado).
+
 #### O piso de ruído é ~1 ponto, não 0,3
 
 E este é o corolário que recalibra as conclusões anteriores. O braço A é a **mesma receita** do
