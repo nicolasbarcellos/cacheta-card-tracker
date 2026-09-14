@@ -1829,6 +1829,38 @@ VRAM (sobravam 8,7 GB de RAM e 3 GB de VRAM). Causa: o `workers=8` padrão do Ul
 
 Pesos do braço reprovado em `training/runs/ab-degrees10/weights/best.pt` (não publicado).
 
+#### TTA não extrai nada: o vão não é de inferência, é da representação (2026-09-14)
+
+Diagnóstico barato, sem treino nenhum. Se o TTA do Ultralytics (`augment=True`: multi-escala mais
+espelho) fechasse o vão de 9 pontos do índice deitado, o defeito seria de EXTRAÇÃO e existiria
+conserto mais barato que retreinar.
+
+| faixa | normal | TTA |
+|---|---|---|
+| em pé | 98,5% | 98,7% |
+| **muito deitado** | **92,9%** | **92,9%** |
+
+**Zero.** O que o modelo não lê num índice girado, ele não passa a ler consultando-o de várias
+formas — o vão está na representação aprendida. Fecha a família inteira de ideias de "mudar como se
+pergunta ao modelo" (e o TTA custaria ~3× de inferência, que hoje não há: a GPU é o gargalo desde
+que a câmera foi a 60 fps).
+
+**Ressalva que evita concluir demais:** o TTA do Ultralytics testa escalas MENORES (1 / 0,83 /
+0,67). Ele não diz nada sobre subir o `imgsz` para 1600, que vai na direção oposta — essa porta
+continua aberta.
+
+#### Dois braços não podem montar o dataset na MESMA pasta
+
+Defeito exposto durante o A/B de rotação, e o modo de falha é traiçoeiro. Todo treino montava o
+dataset em `datasets/fans-split/`, apagando-a com `rmtree` na entrada. Lançar o segundo braço
+enquanto o primeiro ainda lia dela (validação final) matou o primeiro com `Image Not Found` — e
+esse foi o caso BARULHENTO. Se a cópia do segundo tivesse começado um pouco mais tarde, o primeiro
+teria terminado tendo lido, sem erro nenhum, imagens do OUTRO braço: dois modelos comparados sem se
+saber o que cada um viu.
+
+Agora cada rodada monta em `fans-split-<nome>`, e o `--nome` já existia exatamente para os braços
+não colidirem.
+
 #### O piso de ruído é ~1 ponto, não 0,3
 
 E este é o corolário que recalibra as conclusões anteriores. O braço A é a **mesma receita** do

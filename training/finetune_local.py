@@ -47,7 +47,12 @@ SYNTH = ROOT / "datasets" / "synthetic"
 LOCAL = ROOT / "datasets" / "local"
 GRAVADAS = ROOT / "datasets" / "real"
 NEGATIVOS = ROOT / "datasets" / "negativos"
-TRAINSET = ROOT / "datasets" / "fans-split"
+# Pasta de treino montada, POR RODADA. Era uma so (`fans-split`), e em
+# 2026-09-14 isso corrompeu um A/B em silencio: lancar o segundo braco apagou a
+# pasta com `rmtree` enquanto o primeiro ainda lia dela na validacao final, e o
+# treino morreu com "Image Not Found". O nome da rodada no caminho torna dois
+# bracos independentes -- e o `--nome` ja existe exatamente para nao colidirem.
+TRAINSET_BASE = ROOT / "datasets" / "fans-split"
 MODEL = Path("models/cards.pt")
 
 REAL_TARGET_SHARE = 0.30   # fatia do treino que os frames reais devem ocupar
@@ -92,6 +97,32 @@ ap.add_argument("--degrees", type=float, default=0.0,
 # "Pin memory thread exited unexpectedly" -- e falha de memoria compartilhada
 # entre processos do Windows, nao de VRAM. Medido em 2026-09-14: com 2 o treino
 # atravessa. Custa um pouco de velocidade e nao toca no resultado.
+# ROTACAO por RE-AMOSTRAGEM, nao por augment. O alvo aberto e o indice deitado
+# (medido: classe 98,3% em pe contra 89,2% muito deitado, NA PROPRIA validacao
+# sintetica), e o sintetico tem 18,6% de rotulo deitado contra 31% do real.
+#
+# Repetir as imagens ricas em deitado sobe essa fatia SEM tocar em imagem
+# nenhuma, entao as caixas continuam as do gerador — exatas em qualquer angulo.
+# E o que separa esta ideia das duas que ja falharam: a abertura 180 do gerador
+# (`cards_backup_12`) MUDOU as imagens, e o `degrees` do augment recalcula a
+# caixa a partir dos CANTOS DA CAIXA e a infla 43% em area. Aqui nao ha rotulo
+# novo, so peso — e a precedencia e o PESO_RANK_FRACO do gerador, que funcionou
+# para os ranks fracos em 30/07.
+#
+# So o TREINO e repetido; a validacao fica intacta, senao a nota mediria copia.
+FRACAO_DEITADA = 0.30      # imagem "rica": 30%+ dos indices com larg/alt >= 1
+ap.add_argument("--peso-deitado", type=int, default=1, metavar="N",
+                help="repete N vezes a imagem sintetica rica em indice deitado "
+                     "(1 = desligado; 3 leva a fatia deitada de 18,6% a ~27%)")
+# CONTROLE do --peso-deitado: repete a MESMA QUANTIDADE de imagens, escolhidas
+# ao ACASO. Sem ele o braco muda duas coisas de uma vez -- a composicao de
+# rotacao E o tamanho do treino (que dilui a fatia de dado real de 38% para
+# 27%, porque o REAL_TARGET_SHARE repete em fator INTEIRO e ja estava em 1x).
+# Com ele, os dois bracos tem o mesmo tamanho, a mesma fatia de real e a mesma
+# estrutura de repeticao: a UNICA diferenca e o criterio de selecao.
+ap.add_argument("--peso-aleatorio", action="store_true",
+                help="controle do --peso-deitado: repete a mesma quantidade de "
+                     "imagens, sorteadas em vez de escolhidas por rotacao")
 ap.add_argument("--workers", type=int, default=2,
                 help="processos do dataloader (padrao 2: 8 quebra no Windows)")
 ap.add_argument("--nome", default="finetune-fans",
@@ -135,6 +166,26 @@ def collect(source, needs_review=False):
     return pairs
 
 
+def _fracao_deitada(label_path):
+    """Fração dos índices da imagem com caixa deitada (larg/alt >= 1 em PX).
+
+    O rótulo YOLO normaliza pelo quadro, então a razão do arquivo já vem
+    multiplicada por (H/W) — a armadilha de unidade que fez "o treino quase não
+    tem índice deitado" (2,2%) virar 18,4% depois da conversão. Aqui o canvas é
+    16:9 e a conversão é explícita, para ninguém repetir o engano.
+    """
+    razoes = []
+    for linha in label_path.read_text().splitlines():
+        partes = linha.split()
+        if len(partes) == 5:
+            w, h = float(partes[3]) * 16, float(partes[4]) * 9
+            if h:
+                razoes.append(w / h)
+    if not razoes:
+        return 0.0
+    return sum(1 for r in razoes if r >= 1.0) / len(razoes)
+
+
 def split_pairs(pairs, seed):
     """Separa validação de treino DENTRO de cada fonte.
 
@@ -152,6 +203,8 @@ def main():
 
     args = ap.parse_args()
     EPOCHS, IMGSZ, BATCH = args.epochs, args.imgsz, args.batch
+    TRAINSET = (TRAINSET_BASE if args.nome == "finetune-fans"
+                else TRAINSET_BASE.with_name(f"fans-split-{args.nome}"))
 
     synthetic = collect(SYNTH)
     real = collect(LOCAL, needs_review=True)
@@ -198,6 +251,16 @@ def main():
         print(f"negativos: {len(destes)} imagens sem carta ({pasta.name})")
 
     syn_train, syn_val = split_pairs(synthetic, seed=42)
+    if args.peso_deitado > 1:
+        ricas = [par for par in syn_train if _fracao_deitada(par[1]) >= FRACAO_DEITADA]
+        if args.peso_aleatorio:
+            # mesma QUANTIDADE, sorteada: é o controle que separa "repetir
+            # deitado" de "repetir qualquer coisa"
+            ricas = random.Random(42).sample(syn_train, len(ricas))
+        rotulo = "aleatório" if args.peso_aleatorio else "rico em deitado"
+        syn_train = syn_train + ricas * (args.peso_deitado - 1)
+        print(f"deitado:   {len(ricas)} imagens ({rotulo}) repetidas "
+              f"{args.peso_deitado}x -> {len(syn_train)} sintéticas no treino")
     real_train, real_val = split_pairs(real, seed=43)
     neg_train, neg_val = split_pairs(negativos, seed=44)
 
