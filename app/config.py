@@ -20,11 +20,15 @@ class Config:
     # dez gravações: a taxa de quadros DISTINTOS bate em 28-32 em todas,
     # enquanto o laço gira a 29-48, ou seja a câmera é o teto e a folga da GPU
     # já está sendo gasta re-inferindo a mesma imagem. Como todo parâmetro do
-    # pipeline é contado em QUADROS, dobrar a taxa distinta faz a tela reagir
-    # ~2x mais rápido sem tocar no modelo.
-    # NÃO CONFIRMADO NA CÂMERA: pedir não é obter. O `CameraStream` anuncia o
-    # que foi NEGOCIADO ao abrir e volta sozinho para o padrão se o modo não
-    # for suportado. Ao ligar a câmera, leia a linha `câmera N: aberta ...`.
+    # pipeline é contado em QUADROS, a votação do FanReader passa a decidir com
+    # evidência INDEPENDENTE em vez de cópias da mesma imagem.
+    # CONFIRMADO na câmera em 2026-09-14: ela deu 60,0002 e a taxa distinta foi
+    # de ~30 para 45,8, com os repetidos a 0%. O que NÃO acontece é a tela
+    # reagir 2x mais rápido — `lock_frames` conta VOLTAS DO LAÇO, limitadas
+    # pela inferência (19,8 ms ~ 50/s), não pela câmera: a janela foi de 0,48 s
+    # para 0,44 s. O gargalo agora é a GPU, e não há mais folga escondida.
+    # Pedir não é obter: o `CameraStream` anuncia o que foi NEGOCIADO ao abrir
+    # e volta sozinho para o padrão se o modo não for suportado.
     cam_fps: int = 60
     detect_imgsz: int = 1280  # resolução da inferência (cantos são pequenos)
     model_path: str = "models/cards.pt"

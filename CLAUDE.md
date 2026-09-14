@@ -2284,9 +2284,11 @@ Três consequências:
 1. **Computador melhor não compra FPS nenhum hoje.** A folga da GPU já está sendo desperdiçada
    reprocessando imagem repetida.
 2. **O `CameraStream` nunca pede `CAP_PROP_FPS`** — define FOURCC, largura e altura e aceita o
-   padrão do DirectShow (30). Se a MX Brio fizer 1080p60, é o ganho mais barato do projeto: todo
-   parâmetro é contado em QUADROS, então dobrar a taxa distinta faz `lock_frames=20` valer 0,33 s
-   em vez de 0,67 s. **Não testado — precisa da câmera conectada.**
+   padrão do DirectShow (30). **FEITO e CONFIRMADO em 2026-09-14**: a câmera aceitou 60 e a taxa
+   distinta foi de ~30 para 45,8, com os repetidos a 0%. A previsão que estava escrita aqui —
+   "`lock_frames=20` passa a valer 0,33 s em vez de 0,67 s" — **está ERRADA**: `lock_frames` conta
+   VOLTAS DO LAÇO, que são limitadas pela inferência (19,8 ms), não pela câmera; a janela foi de
+   0,48 s para 0,44 s e só. Ver "CONFIRMADO na câmera no mesmo dia".
 3. **Mais FPS não conserta detecção.** A perda é do índice deitado (erro de classe), e ver a mesma
    cena mais vezes por segundo não muda o palpite.
 
@@ -2311,12 +2313,46 @@ VOLTAS DO LAÇO e foi afinado assim, então pular a volta inteira mudaria o sign
 medição.
 
 **(c) `config.cam_fps = 60`: a câmera finalmente é PEDIDA.** Era o ganho mais barato do projeto e
-ninguém o pedia — o DirectShow entregava o padrão. **Não confirmado na câmera** (ela não esteve
-nesta sessão): pedir não é obter, então o `CameraStream` anuncia o que foi NEGOCIADO ao abrir
-(`câmera 0: aberta 1920x1080 @ 60 fps (pedimos 60)`) e avisa quando a câmera dá menos. E há uma
-guarda para o caso que não dá para testar sem o hardware: se a câmera abrir e **não entregar o
-primeiro frame** com a taxa pedida, o pedido é desligado e ela é reaberta no padrão — um modo não
-suportado não pode deixar o app cego.
+ninguém o pedia — o DirectShow entregava o padrão. Pedir não é obter, então o `CameraStream`
+anuncia o que foi NEGOCIADO ao abrir e avisa quando a câmera dá menos. E há uma guarda para o caso
+que não dá para testar sem o hardware: se a câmera abrir e **não entregar o primeiro frame** com a
+taxa pedida, o pedido é desligado e ela é reaberta no padrão — um modo não suportado não pode
+deixar o app cego.
+
+#### CONFIRMADO na câmera no mesmo dia — e o gargalo trocou de lugar
+
+A câmera aceitou: `câmera 0: aberta 1920x1080 @ 60.0002 fps (pedimos 60)`. Com o leque no quadro,
+depois de assentar:
+
+    [fps] laço 45.8 | câmera 45.8 (0% repetidos)  (lock_frames=20 ~ 0.4s)
+
+| | antes | agora |
+|---|---|---|
+| imagens DISTINTAS por segundo | ~30 | **45,8** (+53%) |
+| frames repetidos | 25-37% | **0%** |
+| taxa do laço | 41,8 | 45,8 |
+| `lock_frames=20` vale | 0,48 s | 0,44 s |
+
+**O PROGNÓSTICO DE ATRASO ESTAVA ERRADO, e o erro é instrutivo.** Esta seção previa que a tela
+passaria a reagir "~2× mais rápido" — a nota de memória e o `config.py` diziam o mesmo desde 03/09.
+Não acontece: `lock_frames` conta **VOLTAS DO LAÇO**, e a taxa do laço é limitada pela INFERÊNCIA
+(19,8 ms ≈ 50 voltas/s), não pela câmera. Ela já era 41,8 e foi para 45,8; a janela de tempo quase
+não se mexeu. Quem previu 2× confundiu as duas taxas — exatamente o erro que o conserto (a) existe
+para tornar impossível.
+
+**Os `0% repetidos` são a prova de que o gargalo MUDOU DE LUGAR**: era a câmera, agora é a GPU, e
+ela já estava perto do teto. Não há mais folga escondida no laço.
+
+**O ganho real é na QUALIDADE DO VOTO, não no tempo.** Antes, das 20 voltas de uma janela de trava,
+~15 eram imagens distintas e o resto eram cópias da mesma imagem — e cópia não traz informação
+nova, mas VOTA: um erro de classe num quadro capturado entrava com peso 2 na votação ponderada do
+`FanReader`. Agora todo voto é evidência independente, na mesma janela de ~0,44 s. **Se isso move a
+nota medida, ninguém sabe** — só aparece numa partida gravada nova, e é o que falta medir.
+
+**Consequência para o `imgsz`:** subir de 1280 para 1600 agora tem preço explícito. 27,8 ms por
+inferência derruba o laço para ~36 voltas/s e `lock_frames=20` sobe de 0,44 s para 0,55 s. É troca
+direta entre resolução e tempo de reação — antes havia folga escondida para pagar isso, e não há
+mais.
 
 Guardado por `tests/test_fps_e_camera.py` (7 testes, conferidos por mutação: ignorar o `novo`
 derruba três, tirar a guarda do FPS derruba um, contar leituras em vez de capturas derruba um, e
