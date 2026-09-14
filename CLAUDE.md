@@ -1746,14 +1746,26 @@ confiança baixa, que é a razão de fundo de baixar o limiar não funcionar. Is
 filtrada do `extrai_dificeis` (uma vaga perdida, código único, `misses` ≤ 12), não de todas as
 perdas. Sobre todas, a oclusão é 24%.
 
-#### Uma armadilha em disco, deixada por uma sessão anterior
+#### Uma armadilha em disco, deixada por uma sessão anterior — FECHADA em 2026-09-14
 
-`training/datasets/real/20260828-144911-dificeis` tem **25 imagens com `review/` intacto**, mas o
-CLAUDE.md registra que só 8 passaram na auditoria e que a pasta NÃO foi treinada — as 17 rejeitadas
-nunca foram apagadas de `review/`, que é o mecanismo de rejeição que o `finetune_local.py`
-respeita. Um treino rodado sem `--holdout` a puxa em silêncio, incluindo as duas que rotulam `10D`
-sobre um `2♦`. **Rejeitar uma amostra é apagar a imagem de `review/` — auditar sem apagar não
-rejeita nada.**
+`training/datasets/real/20260828-144911-dificeis` tinha **25 imagens com `review/` intacto**,
+enquanto este arquivo registrava que só 8 passaram na auditoria e que a pasta NÃO foi treinada — as
+17 rejeitadas nunca tinham sido apagadas de `review/`, que é o mecanismo de rejeição que o
+`finetune_local.py` respeita. Um treino rodado sem `--holdout` a puxava em silêncio, incluindo as
+duas que rotulam `10D` sobre um `2♦`. **Rejeitar uma amostra é apagar a imagem de `review/` —
+auditar sem apagar não rejeita nada.**
+
+As 17 foram apagadas em 2026-09-14, depois de reauditar a folha de contato do zero. O veredito novo
+bate carta a carta com o antigo: sobrevivem os cinco `J♥` (0-4), o `3♦` (16) e os dois `2♦`
+(19-20), e `collect(..., needs_review=True)` agora devolve **8**. As 17 reprovadas têm as
+assinaturas que este arquivo já descreve — caixa sobre **pip sem glifo** no meio da carta (índices
+10-13, 23), **glifo coberto pelo dedo** (7, 18), caixa que **invade a vizinha** e contém dois
+índices (8, 9, 15), o rótulo `10D` sobre um `2♦` legível (21, 22) e recortes estourados/borrados
+sem glifo legível (5, 6, 14, 17, 24).
+
+**A pasta continua não valendo como treino** — as 8 são o mesmo `J♥`, o mesmo `2♦` e um `3♦` quase
+na mesma pose, três situações distintas, abaixo do piso de ruído de ~1 ponto. O que mudou é que ela
+deixou de poder envenenar um treino distraído.
 
 ### O primeiro número AO VIVO do modelo novo (2026-08-25 19:30)
 
