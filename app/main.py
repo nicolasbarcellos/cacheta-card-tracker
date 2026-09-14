@@ -26,22 +26,44 @@ class FpsMeter:
     outra coisa na seguinte.
     """
 
-    def __init__(self, intervalo=5.0):
+    def __init__(self, intervalo=5.0, agora=time.time):
         self.intervalo = intervalo
+        self._agora = agora        # injetável: é o que torna isto testável
         self._n = 0
-        self._t = time.time()
+        self._novos = 0
+        self._t = agora()
         self.fps = 0.0
+        self.fps_distintos = 0.0
 
-    def tick(self):
+    def tick(self, novo=True):
+        """Uma volta do laço. `novo` diz se a câmera entregou imagem NOVA.
+
+        Publicar só a taxa do laço escondia um terço do trabalho da GPU: o
+        `CameraStream` guarda o frame mais recente e o laço lê o que estiver
+        lá, então quando o laço corre mais que a câmera ele re-infere a MESMA
+        imagem. Medido em 2026-09-03 nas dez gravações: 1-37% de repetições, e
+        a taxa DISTINTA batendo em 28-32 em todas, girasse o laço a 29 ou a 48.
+        A câmera é o teto, não a GPU — e por meses o número publicado aqui foi
+        lido como se fosse a taxa de imagens.
+        """
         self._n += 1
-        dt = time.time() - self._t
+        self._novos += 1 if novo else 0
+        dt = self._agora() - self._t
         if dt >= self.intervalo:
             self.fps = self._n / dt
-            print(f"[fps] {self.fps:.1f}  "
+            self.fps_distintos = self._novos / dt
+            repetidos = 100 * (1 - self._novos / self._n) if self._n else 0.0
+            # lock_frames é contado em VOLTAS DO LAÇO (process_frame roda a
+            # cada volta, repetida ou não), então a conversão para segundos usa
+            # a taxa do laço — é a taxa da CÂMERA que diz quanta imagem nova
+            # entrou nessa janela.
+            print(f"[fps] laço {self.fps:.1f} | câmera {self.fps_distintos:.1f} "
+                  f"({repetidos:.0f}% repetidos)  "
                   f"(lock_frames={config.lock_frames} ~ "
                   f"{config.lock_frames / self.fps:.1f}s)", flush=True)
             self._n = 0
-            self._t = time.time()
+            self._novos = 0
+            self._t = self._agora()
 
 
 def log_lock(hand_view, hand_lock):
@@ -101,8 +123,12 @@ def process_frame(detections_hand, tracker, hand_view, hand_lock,
 def vision_loop(cams, detector, tracker, annotated, running,
                 hand_view, hand_lock, recorder=None):
     fps = FpsMeter()
+    ultimo_seq = -1
+    dets_hand = None
     while running.is_set():
-        frame = cams["hand"].read()
+        frame, seq = cams["hand"].read_seq()
+        novo = seq != ultimo_seq
+        ultimo_seq = seq
         if frame is None:
             # SEM IMAGEM não é "mão fora do quadro". A câmera devolve None
             # enquanto aquece e quando cai, e alimentar o pipeline com lista
@@ -112,15 +138,29 @@ def vision_loop(cams, detector, tracker, annotated, running,
             # vazias (o laço gira a 6000/s sem inferência), que entulhavam a
             # gravação e faziam o FPS médio sair 253 em vez de 35.
             continue
-        dets_hand = detector.detect(frame)
-        annotated["hand"] = draw_boxes(frame, dets_hand)
+        if novo or dets_hand is None:
+            dets_hand = detector.detect(frame)
+            annotated["hand"] = draw_boxes(frame, dets_hand)
+        # FRAME REPETIDO: reaproveita a detecção em vez de re-inferir a MESMA
+        # imagem. Não muda NADA do que o pipeline vê — a inferência é
+        # determinística, e é justamente por isso que a medição de 2026-09-03
+        # conseguiu contar as repetições comparando detecções byte a byte (1 a
+        # 37% delas, conforme a gravação). O que ela devolve é a folga de GPU
+        # que estava sendo queimada: nesta máquina a inferência custa 19-22 ms,
+        # e num terço das voltas ela era gasta para chegar ao mesmo resultado.
+        #
+        # `process_frame` continua rodando na volta repetida DE PROPÓSITO: todo
+        # parâmetro do pipeline é contado em VOLTAS DO LAÇO e foi afinado
+        # assim. Pular a volta inteira mudaria o significado de `lock_frames`,
+        # `fan_window` e `fan_expire` de uma vez — é outra mudança, e precisa
+        # da sua própria medição.
 
         # o índice vem ANTES do processamento: é ele que amarra a mão e os
         # eventos ao frame exato que os gerou
         i = recorder.frame(dets_hand, frame) if recorder is not None else 0
         process_frame(dets_hand, tracker, hand_view, hand_lock,
                       recorder=recorder, i=i)
-        fps.tick()
+        fps.tick(novo)
 
 
 def build_pipeline():
@@ -174,7 +214,8 @@ def main():
     # f5fdf64 — era só preview, e ainda assim consumia USB e uma thread.
     cams = {
         "hand": CameraStream(config.hand_cam_index,
-                             config.frame_width, config.frame_height),
+                             config.frame_width, config.frame_height,
+                             fps=config.cam_fps),
     }
     detector = CardDetector(config.model_path, config.min_confidence,
                             imgsz=config.detect_imgsz,

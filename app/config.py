@@ -15,6 +15,17 @@ class Config:
     hand_cam_index: int = 0
     frame_width: int = 1920
     frame_height: int = 1080
+    # Taxa PEDIDA à câmera. 0 = aceita o padrão do driver, que é o que o
+    # projeto fez até 2026-09-14 — e o padrão do DirectShow é 30. Medido nas
+    # dez gravações: a taxa de quadros DISTINTOS bate em 28-32 em todas,
+    # enquanto o laço gira a 29-48, ou seja a câmera é o teto e a folga da GPU
+    # já está sendo gasta re-inferindo a mesma imagem. Como todo parâmetro do
+    # pipeline é contado em QUADROS, dobrar a taxa distinta faz a tela reagir
+    # ~2x mais rápido sem tocar no modelo.
+    # NÃO CONFIRMADO NA CÂMERA: pedir não é obter. O `CameraStream` anuncia o
+    # que foi NEGOCIADO ao abrir e volta sozinho para o padrão se o modo não
+    # for suportado. Ao ligar a câmera, leia a linha `câmera N: aberta ...`.
+    cam_fps: int = 60
     detect_imgsz: int = 1280  # resolução da inferência (cantos são pequenos)
     model_path: str = "models/cards.pt"
     min_confidence: float = 0.30  # baixo de propósito: a votação temporal
@@ -63,7 +74,16 @@ class Config:
     # para encaixar a carta), então o que vale é a duração — e a duração
     # depende do FPS, que ninguém tinha medido.
     #
-    # MEDIDO em 2026-08-11 com o FpsMeter: 45 fps. O CLAUDE.md assumia ~15, e
+    # MEDIDO em 2026-08-11 com o FpsMeter: 45 fps. ATENÇÃO — aquele 45 era a
+    # taxa do LAÇO, e em 2026-09-03 mediu-se que ela não é a taxa de IMAGENS:
+    # o laço re-processa o frame mais recente, e a taxa de quadros DISTINTOS
+    # bate em 28-32 nas dez gravações, gire o laço a 29 ou a 48. Ou seja, os
+    # valores abaixo foram dobrados para reproduzir durações a 45 fps quando a
+    # câmera entregava ~30 — eles duram MAIS do que a conta original supunha.
+    # Não foram mexidos: o que os validou foi a nota medida por replay, e essa
+    # nota veio das durações REAIS, não da conta. O `FpsMeter` passou a publicar
+    # as duas taxas para que ninguém mais confunda uma com a outra.
+    # O CLAUDE.md assumia ~15, e
     # a validação ao vivo de 2026-08-04 rodou a ~22 (o laço ainda gastava
     # metade da inferência na câmera do descarte). Ao desligar aquela detecção
     # o FPS dobrou e cada janela passou a durar METADE — desfazendo na prática

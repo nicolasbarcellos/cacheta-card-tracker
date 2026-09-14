@@ -2290,6 +2290,39 @@ Três consequências:
 3. **Mais FPS não conserta detecção.** A perda é do índice deitado (erro de classe), e ver a mesma
    cena mais vezes por segundo não muda o palpite.
 
+#### O que foi feito com isso em 2026-09-14 (os três consertos são em disco)
+
+**(a) O instrumento passou a publicar as DUAS taxas.** `FpsMeter.tick(novo)` conta voltas do laço e
+capturas distintas, e imprime `[fps] laço 47.8 | câmera 30.2 (37% repetidos)`. Quem diz o que é
+captura nova é o `CameraStream`, por um contador de capturas (`read_seq`), não uma comparação de
+pixels dentro da métrica — é a mesma decisão do `ultimo_leque` na contradição. A conversão de
+`lock_frames` para segundos continua usando a taxa do LAÇO, que é a correta: `process_frame` roda a
+cada volta, repetida ou não.
+
+**(b) A volta repetida deixou de pagar inferência.** Se a captura não mudou, a detecção anterior é
+reaproveitada. **Não muda nada do que o pipeline vê**, e a premissa foi verificada em vez de
+suposta: 5 inferências em cada um de 3 frames com carta (8-10 detecções) saem byte a byte iguais —
+é por isso que a medição de 03/09 conseguiu contar repetições comparando detecções. Devolve 19,8 ms
+de GPU em cada volta repetida, que eram 1-37% delas conforme a gravação.
+
+`process_frame` continua rodando na volta repetida **de propósito**: todo parâmetro é contado em
+VOLTAS DO LAÇO e foi afinado assim, então pular a volta inteira mudaria o significado de
+`lock_frames`, `fan_window` e `fan_expire` de uma vez. Isso é outra mudança e precisa da própria
+medição.
+
+**(c) `config.cam_fps = 60`: a câmera finalmente é PEDIDA.** Era o ganho mais barato do projeto e
+ninguém o pedia — o DirectShow entregava o padrão. **Não confirmado na câmera** (ela não esteve
+nesta sessão): pedir não é obter, então o `CameraStream` anuncia o que foi NEGOCIADO ao abrir
+(`câmera 0: aberta 1920x1080 @ 60 fps (pedimos 60)`) e avisa quando a câmera dá menos. E há uma
+guarda para o caso que não dá para testar sem o hardware: se a câmera abrir e **não entregar o
+primeiro frame** com a taxa pedida, o pedido é desligado e ela é reaberta no padrão — um modo não
+suportado não pode deixar o app cego.
+
+Guardado por `tests/test_fps_e_camera.py` (7 testes, conferidos por mutação: ignorar o `novo`
+derruba três, tirar a guarda do FPS derruba um, contar leituras em vez de capturas derruba um, e
+re-inferir sempre **ou** pular a volta inteira derrubam o sétimo — ele prende as duas metades do
+contrato).
+
 #### O custo de trocar a ARQUITETURA, medido (e a estimativa antiga estava errada)
 
 O `cards.pt` é um YOLOv8 **nano: 3,02 M de parâmetros**, o menor da família. Medido nesta GPU
