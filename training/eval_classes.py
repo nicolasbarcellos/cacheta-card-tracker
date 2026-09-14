@@ -170,7 +170,7 @@ for k, (img_path, label_path) in enumerate(val):
         if not cands:
             erros["nao detectado"] += 1
             por_abertura.append((abertura, False))
-            por_rotacao.append((razao, False, False))
+            por_rotacao.append((razao, False, False, "nao detectado"))
             continue
         achados += 1
         melhor = max(cands, key=lambda p: p[1])
@@ -178,12 +178,13 @@ for k, (img_path, label_path) in enumerate(val):
         dy_all.append(melhor[3] - g[2])
         acertou = melhor[0] == code
         por_abertura.append((abertura, acertou))
-        por_rotacao.append((razao, True, acertou))
+        tipo = "" if acertou else tipo_erro(code, melhor[0])
+        por_rotacao.append((razao, True, acertou, tipo))
         if acertou:
             certos += 1
             por_classe[code][0] += 1
         else:
-            erros[tipo_erro(code, melhor[0])] += 1
+            erros[tipo] += 1
             confusao[(code, melhor[0])] += 1
 
     if (k + 1) % 25 == 0:
@@ -222,14 +223,14 @@ if por_rotacao:
     print("\n  acerto por ROTACAO do indice (larg/alt da caixa verdadeira):")
     print("    faixa            n   detectados  classe correta")
     for lo, hi, nome in faixas_rot:
-        sel = [(d, a) for r, d, a in por_rotacao if lo <= r < hi]
+        sel = [(d, a) for r, d, a, _t in por_rotacao if lo <= r < hi]
         if not sel:
             continue
         det = sum(1 for d, _a in sel if d)
         ok = sum(1 for _d, a in sel if a)
         print(f"    {nome} {len(sel):6d}   {100 * det / len(sel):8.1f}%   "
               f"{100 * ok / len(sel):11.1f}%")
-    deitados = [(d, a) for r, d, a in por_rotacao if r >= 1.0]
+    deitados = [(d, a) for r, d, a, _t in por_rotacao if r >= 1.0]
     fatia = len(deitados) / len(por_rotacao)
     if deitados:
         print(f"    >>> DEITADO (>=1,0): {len(deitados)} indices = "
@@ -237,6 +238,20 @@ if por_rotacao:
               f"{100 * sum(1 for d, _a in deitados if d) / len(deitados):.1f}%"
               f" | classe "
               f"{100 * sum(1 for _d, a in deitados if a) / len(deitados):.1f}%")
+    print()
+    print("  TIPO do erro, em pe (<1,0) x deitado (>=1,0):")
+    print("    tipo                    em pe      deitado")
+    metades = {"em pe": [x for x in por_rotacao if x[0] < 1.0],
+               "deitado": [x for x in por_rotacao if x[0] >= 1.0]}
+    tipos = sorted({x[3] for x in por_rotacao if x[3]})
+    for tp in tipos:
+        linha = []
+        for nome in ("em pe", "deitado"):
+            m = metades[nome]
+            n = sum(1 for x in m if x[3] == tp)
+            linha.append(f"{n:4d} ({100 * n / len(m):4.1f}%)" if m else "   -")
+        print(f"    {tp:20s} {linha[0]:>12s} {linha[1]:>12s}")
+
     if fatia < 0.05:
         print("    !! este conjunto quase NAO TEM indice deitado: ele e CEGO ao "
               "alvo aberto do projeto.\n       Meca tambem num "

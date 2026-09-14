@@ -1718,6 +1718,68 @@ regularizador com só 1.133 amostras reais, e o custo teórico não se materiali
 que é a assinatura de ruído. Pela regra do próprio repositório ("o único que melhorou nas DUAS
 gravações"), não substitui nada. **O modelo em produção continua o `cards_backup_11`.**
 
+#### A perda NÃO é de detecção: é de CLASSE, e o alvo estava mal nomeado (2026-09-14)
+
+Investigação em disco, sem GPU de treino. A pergunta era por que acrescentar índice deitado ao
+treino (o `cards_backup_12`) PIOROU as duas faixas deitadas — mais amostra da condição deixando a
+condição pior é assinatura de rótulo errado, não de dado insuficiente.
+
+**Hipótese principal REFUTADA: a caixa deitada do sintético não tem defeito.** A suspeita era que a
+caixa do YOLO, alinhada aos eixos, inchasse ao girar um índice estreito e alto e ensinasse geometria
+errada. Duas medições derrubam isso:
+
+- o gerador calcula a caixa como o *bounding box* do polígono do índice **já transformado**
+  (`bbox_of(templates[code][1], mats[i])`) — a geometria está certa por construção;
+- e o TAMANHO EFETIVO (depois do resize para `imgsz=1280`) bate faixa a faixa entre sintético e
+  real, o que importa porque este modelo é preso à escala:
+
+| faixa | sintético (larg × alt) | real, reduzido a 1280 |
+|---|---|---|
+| em pé | 45 × 91 | 47 × 87 |
+| inclinado | 73 × 89 | 73 × 87 |
+| deitado | 85 × 78 | 85 × 79 |
+| muito deitado | 89 × 59 | 94 × 67 |
+
+O único vão que sobra é de QUANTIDADE — 18,4% de índice deitado no sintético contra 31,0% no real —
+e foi exatamente esse vão que o `backup_12` tentou fechar, sem sucesso.
+
+**O que a medição achou no lugar, e reescreve o alvo.** Rodando o modelo na validação SINTÉTICA (a
+própria distribuição que o treinou, onde nada foi purgado):
+
+| faixa | detectados | **classe correta** |
+|---|---|---|
+| em pé | 99,9% | **98,3%** |
+| inclinado | 99,7% | 98,7% |
+| quase deitado | 100,0% | 98,9% |
+| deitado | 100,0% | 98,0% |
+| **muito deitado** | **99,4%** | **89,2%** |
+
+**A detecção não se move; quem desaba é a CLASSE** — 9 pontos, dentro da distribuição de treino. E o
+erro não é de um tipo só: em pé × deitado, *naipe na mesma cor* vai de 0,6% a 2,9%, *valor* de 0,6%
+a 2,3% e *valor+naipe* de 0,2% a 1,0%. **Tudo multiplica por ~4-5×** — não é o pip que se perde nem
+o glifo, é o índice inteiro que fica mais difícil girado.
+
+Isso casa com a composição da perda medida ao vivo em 03/09 (44,9% classe ERRADA, 30,1% classe
+certa abaixo do limiar) e explica o nome errado: **ao vivo, classe errada numa vaga conta como
+MISS**, porque a vaga tem rótulo estabelecido e a detecção que chega com outro rótulo não casa. O
+pipeline reporta "perda de detecção" onde o modelo entregou uma caixa com a classe trocada.
+
+**Por que mais dado deitado não resolve**: o modelo já vê 18% de índice deitado no treino e ainda
+assim erra a classe 4-5× mais neles. A dificuldade não é escassez — é invariância à rotação, que é
+propriedade do modelo, não do dataset. Todas as tentativas de 25/08 e 03/09 atacaram a escassez.
+
+**O ganho concreto desta sessão é um INSTRUMENTO que enxerga o alvo.** Era o problema central
+registrado em "Os três instrumentos de aceite são cegos": o `eval_classes` num
+`datasets/real/<partida>` dá 100% de detecção por construção, e **agora se sabe que ele também dá
+99,4-99,7% de CLASSE em todas as faixas** (11/08 e 12/08 medidos hoje) — o `extrai_gravacao.py` só
+guarda frame em que tudo foi detectado, então o conjunto é purgado da falha duas vezes. Já a
+validação SINTÉTICA mostra o gradiente inteiro, roda em minutos e não precisa de gravação nenhuma.
+
+`eval_classes.py` passou a publicar o TIPO do erro repartido em pé × deitado, que é o que diz se
+quem se perde é o pip ou o glifo. Use a validação sintética como triagem rápida de qualquer
+retreino que ataque rotação — com a ressalva de sempre: é in-distribution, então prova sensibilidade
+ao defeito, não generalização. Confirmar continua sendo com `eval_rotacao.py` nas gravações.
+
 #### O piso de ruído é ~1 ponto, não 0,3
 
 E este é o corolário que recalibra as conclusões anteriores. O braço A é a **mesma receita** do
