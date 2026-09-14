@@ -2354,6 +2354,66 @@ inferência derruba o laço para ~36 voltas/s e `lock_frames=20` sobe de 0,44 s 
 direta entre resolução e tempo de reação — antes havia folga escondida para pagar isso, e não há
 mais.
 
+#### O voto duplicado NÃO estava atrapalhando: medido em disco, e a nota não se move
+
+A pergunta que o conserto do FPS deixou em aberto — "a votação sem cópias melhora a tela?" — foi
+respondida **sem gravar partida nova**, e de propósito: partida nova é leque diferente, luz
+diferente e jogo diferente, e este arquivo repete que comparar partidas diferentes é prova fraca. O
+que existe em disco é melhor: as gravações guardam as detecções **por volta do laço**, repetições
+inclusive, então dá para removê-las e re-medir A MESMA partida.
+
+**Duas decisões de método, e sem a segunda o teste mede outra coisa:**
+
+1. **Repetição só é detectável em frame COM detecção.** Duas capturas distintas da mão nunca dão as
+   mesmas caixas (a mão treme) — mas duas capturas de sala vazia dão as duas listas vazias. Cobrar
+   repetição no quadro vazio seria inventar. O detector reproduz a tabela de 03/09 número a número
+   (36,8% / 34,5% / 24,8% / 24,0% / 6,2% / 1,1%), o que o valida.
+2. **Todo parâmetro contado em frames foi reescalado pelo mesmo fator** (`lock_frames`,
+   `fan_window`, `fan_min_appear`, `fan_expire`, `fan_exibe_misses`), para a janela em SEGUNDOS
+   ficar igual nos dois braços. Sem isso, tirar 37% dos frames faria `lock_frames=20` durar 37% mais
+   e o teste mediria duração de janela, não voto duplicado. Conferido: A tem janela de 0,418 s com
+   ~12,6 imagens distintas, B tem 0,43 s com 13 — casados.
+
+| gravação | contradição | excesso | ordem errada | vaivém | atraso | cobertura |
+|---|---|---|---|---|---|---|
+| 20/08 17:42 (37% rep.) | 14,6 → 14,8 | 3,0 → 3,6 | 0,4 → 1,0 | 16 → 34 | 0,49 → 0,46 | igual |
+| 20/08 19:43 (35%) | 13,8 → 14,3 | 4,7 → 5,0 | 0,4 → 0,9 | 12 → 12 | 0,49 → 0,45 | igual |
+| 26/08 14:12 (25%) | 9,2 → 9,3 | 1,6 → 1,6 | 0,5 → 0,4 | 2 → 2 | 0,57 → 0,53 | igual |
+| 12/08 (24%) | 16,3 → 16,1 | 3,1 → 3,3 | 1,4 → 1,6 | 22 → 32 | 0,55 → 0,52 | igual |
+
+**O piso de ruído desta comparação foi medido junto**, varrendo `lock_frames` em ±10% na mesma
+gravação: contradição 14,2-14,9, excesso 2,8-3,4, ordem 0,3-0,4, vaivém 16-18. Ou seja: **contradição,
+excesso e cobertura não se movem** — as diferenças cabem dentro do que um empurrão de 10% num
+parâmetro produz. O atraso melhora 0,03-0,04 s nas quatro, o que é consistente em direção mas está
+na borda do arredondamento do reescalonamento.
+
+**Conclusão: tirar o voto duplicado não melhora a tela.** O ganho de hoje é real no mecanismo (a
+votação passou a decidir com evidência independente) e **invisível no produto** — que é o mesmo
+padrão já registrado no retreino de 25/08 ("consertar o modelo aparece na perda de detecção, não na
+tela").
+
+**O que ficou EM ABERTO, e é honesto não fechar:** o vaivém dobra em duas das quatro gravações
+(16→34 e 22→32), muito fora do piso de 16-18. Duas explicações foram testadas e **nenhuma se
+sustentou**:
+
+- *"a margem de ordem precisa subir agora"* — varrida em 0,05/0,10/0,15 no braço B: 34 → 32 → 34,
+  plana. A margem não é o botão.
+- *"foram as repetições que sumiram"* — o controle derruba isso: o stream ORIGINAL (com as
+  repetições) rodado com os MESMOS parâmetros do braço B dá vaivém **36**, acima dos 34 de B. Quem
+  move o vaivém é a duração da janela, não a cópia.
+
+Então o vaivém de B não é atribuível às repetições, e o efeito residual não tem mecanismo
+identificado. **O que isso obriga a fazer: olhar a ordem na próxima partida gravada.** É o defeito
+que o usuário relatou em 26/08 ("o 7 tava trocando de lugar com o 10"), e é a métrica mais sensível
+do conjunto.
+
+**Limite que este teste NÃO vence:** ele não reproduz a condição de hoje (45,8 distintas/s), porque
+as câmeras das gravações antigas só entregavam ~30 distintas/s. Ele responde "o voto duplicado
+atrapalha?", não "qual é a nota a 60 fps". Essa segunda só sai de gravação nova.
+
+Os streams filtrados ficaram em `gravacoes/<data>/sessao-semrepetidos.jsonl` (o `--dets` do
+`mede_leitura.py` os lê), para o teste poder ser refeito sem recomeçar.
+
 Guardado por `tests/test_fps_e_camera.py` (7 testes, conferidos por mutação: ignorar o `novo`
 derruba três, tirar a guarda do FPS derruba um, contar leituras em vez de capturas derruba um, e
 re-inferir sempre **ou** pular a volta inteira derrubam o sétimo — ele prende as duas metades do
