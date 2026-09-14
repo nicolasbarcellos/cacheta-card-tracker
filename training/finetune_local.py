@@ -18,6 +18,13 @@ Consome três fontes e mistura todas:
 Uma partida pode ser DEIXADA DE FORA com `--holdout <nome>`: sem isso, medir o
 modelo com `replay.py` contra a mesma partida que o treinou é medir decoreba.
 
+E uma pasta pode ser tirada do treino PARA SEMPRE, deixando dentro dela um
+arquivo `NAO_TREINAR` cuja primeira linha diz o porquê. O `--holdout` é opt-in e
+depende de quem digita lembrar da lista; o marcador põe a decisão JUNTO do dado,
+como a rejeição de um rótulo já mora em `review/`. É para o dado que foi
+auditado e está correto, mas que foi MEDIDO e piora o modelo — sem ele, um
+treino distraído puxa esses frames em silêncio.
+
 Do dataset real só entram os frames cuja imagem em local/review/ sobreviveu:
 apagar a foto de revisão é como você rejeita uma anotação errada.
 
@@ -34,7 +41,6 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from ultralytics import YOLO  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent
 SYNTH = ROOT / "datasets" / "synthetic"
@@ -87,8 +93,26 @@ ap.add_argument("--nao-publicar", action="store_true",
                 help="não sobrescreve models/cards.pt — só deixa o best.pt. "
                      "É o que permite rodar dois braços de um A/B a partir dos "
                      "MESMOS pesos de partida")
-args = ap.parse_args()
-EPOCHS, IMGSZ, BATCH = args.epochs, args.imgsz, args.batch
+MARCADOR = "NAO_TREINAR"
+
+
+def motivo_para_nao_treinar(pasta):
+    """Primeira linha do NAO_TREINAR da pasta, ou None se ela pode treinar.
+
+    O marcador existe porque a seleção era opt-OUT: o `main` varre todas as
+    pastas de `datasets/real/` e só pula as que estiverem no `--holdout`. Dado
+    auditado mas MEDIDO como nocivo (os `-classe` e os `-dificeis2`, que
+    pioraram o modelo) entrava por omissão, e o único aviso era a memória de
+    quem digitava a linha de comando.
+    """
+    marcador = pasta / MARCADOR
+    if not marcador.exists():
+        return None
+    linhas = [ln.strip() for ln in
+              marcador.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    # motivo vazio ainda tira do treino: o marcador é a decisão, o texto é só
+    # para quem for ler depois
+    return linhas[0] if linhas else "sem motivo escrito"
 
 
 def collect(source, needs_review=False):
@@ -117,6 +141,11 @@ def split_pairs(pairs, seed):
 
 
 def main():
+    from ultralytics import YOLO
+
+    args = ap.parse_args()
+    EPOCHS, IMGSZ, BATCH = args.epochs, args.imgsz, args.batch
+
     synthetic = collect(SYNTH)
     real = collect(LOCAL, needs_review=True)
     print(f"sintético: {len(synthetic)} imagens ({SYNTH})")
@@ -125,6 +154,10 @@ def main():
     # como se rejeita um rótulo), e o holdout fica de fora para sobrar partida
     # com que MEDIR o modelo depois
     for pasta in sorted(p for p in GRAVADAS.glob("*") if p.is_dir()):
+        if (motivo := motivo_para_nao_treinar(pasta)):
+            print(f"partida:   {pasta.name} FORA do treino "
+                  f"({MARCADOR}: {motivo})")
+            continue
         if pasta.name in args.holdout:
             print(f"partida:   {pasta.name} FORA do treino (holdout)")
             continue
@@ -146,6 +179,10 @@ def main():
     # perdida, e essa troca não aparece no mAP.
     negativos = []
     for pasta in sorted(p for p in NEGATIVOS.glob("*") if p.is_dir()):
+        if (motivo := motivo_para_nao_treinar(pasta)):
+            print(f"negativos: {pasta.name} FORA do treino "
+                  f"({MARCADOR}: {motivo})")
+            continue
         if pasta.name in args.holdout:
             print(f"negativos: {pasta.name} FORA do treino (holdout)")
             continue

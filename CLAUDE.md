@@ -1924,6 +1924,39 @@ mediria só simulação) e repete os frames reais até ~30% do treino. `freeze=1
 `mosaic=0.0` (mosaico descaracteriza o layout de leque). O modelo antigo vai para
 `models/cards_backup_N.pt` e o script imprime o comando de rollback.
 
+#### `NAO_TREINAR`: a pasta reprovada sai do treino sozinha (2026-09-14)
+
+Rejeitar um RÓTULO é apagar a imagem de `review/`. Faltava o outro nível: rejeitar uma PASTA
+inteira. `finetune_local.main` varre **todas** as pastas de `datasets/real/` e só pula as do
+`--holdout` — ou seja, a seleção era **opt-out e dependia da memória de quem digita a linha de
+comando**. Os dados auditados que foram MEDIDOS e pioram o modelo (os `-classe`, os `-dificeis2`)
+entravam por omissão: **75 frames**, em 12 pastas.
+
+Um arquivo `NAO_TREINAR` dentro da pasta tira ela do treino para sempre, e a primeira linha dele é
+o motivo, impresso na seleção. A decisão passa a morar **junto do dado**, que é o mesmo princípio
+do `review/`. O marcador é consultado ANTES do `--holdout`: o marcador é permanente, o holdout é
+da rodada.
+
+**O marcador VAZIO ainda tira a pasta** — o arquivo é a decisão, o texto é só para quem for ler
+depois. É o caso que a implementação ingênua (`return texto.strip() or None`) erraria em silêncio,
+e é por isso que ele tem teste próprio, conferido por mutação nas duas direções.
+
+As 12 pastas marcadas, e o que a medição disse de cada família:
+
+| pastas | frames | por quê |
+|---|---|---|
+| 8 × `*-classe` | 53 | 0,9 ponto de perda de detecção a mais (1,5 em 19/08 16:22) por 5 erros de naipe a menos |
+| 3 × `*-dificeis2` | 14 | segunda rodada de dado difícil: só 14 sobreviveram à auditoria, abaixo do ruído |
+| `20260828-144911-dificeis` | 8 | 3 poses distintas (o mesmo `J♥`, o mesmo `2♦`, um `3♦`) |
+
+Sobram **789 frames reais** revisados entrando no treino. Guardado por
+`tests/test_finetune_selecao.py`.
+
+Efeito colateral do teste, e é ganho: `finetune_local.py` deixou de importar o `ultralytics` no
+topo (agora é dentro do `main`), então importá-lo custa milissegundos em vez de arrastar o torch —
+que é o que mantém a suíte rápida. O `parse_args()` foi junto para dentro do `main`, senão
+importar o módulo num teste tentaria parsear o argv do pytest.
+
 **Retreino de 2026-07-29** (o primeiro a usar a caixa corrigida). Os pesos anteriores
 vinham de `870407c`, *antes* do fix `a8321af`, e tinham sido treinados só em sintético
 com o **pip do naipe truncado** — cobertura média de 65,7% do índice, pior caso 49,7%
