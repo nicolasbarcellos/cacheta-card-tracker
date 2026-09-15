@@ -1861,6 +1861,55 @@ saber o que cada um viu.
 Agora cada rodada monta em `fans-split-<nome>`, e o `--nome` já existia exatamente para os braços
 não colidirem.
 
+#### Reamostrar a imagem rica em índice deitado (`--peso-deitado 3`): REPROVADO (2026-09-15)
+
+A segunda tentativa contra o alvo reescrito, e a primeira sem mexer em rótulo nenhum: repetir 3× as
+567 imagens sintéticas com 30%+ dos índices deitados, o que sobe a fatia deitada de 18,6% para ~27%.
+O controle certo não é o `ab-fliplr05`, e sim o `--peso-aleatorio` (`ab-random3`): o mesmo número de
+imagens repetidas, só que sorteadas. Os dois braços foram conferidos pelo tamanho: **4.122 treino /
+331 validação, 1.133 reais = 27%** nos dois. A única diferença entre eles é o critério de seleção.
+
+O primeiro braço deitado (`ab-deitado3`, 14/09) morreu na época 11 de 12 com a colisão de pasta da
+seção anterior, e a redetecção dele parou em 78% do vídeo. Por isso foi **retreinado inteiro**
+(`ab-deitado3b`): um braço com uma época a menos que o controle não serve para medir a ~1 ponto de
+ruído. Os arquivos parciais (`models/ab_deitado3.pt`, `gravacoes/20260828-144911/sessao-ab_deitado3.jsonl`)
+**não valem como medida**.
+
+**Triagem sintética** (200 imagens, 158 índices muito deitados):
+
+| faixa | controle `fliplr05` | aleatório ×3 | **deitado ×3** |
+|---|---|---|---|
+| em pé | 98,4% | 98,5% | 98,6% |
+| muito deitado | 89,2% | 89,2% | **88,0%** |
+| todo deitado (≥1,0) | 93,9% | 93,9% | **93,2%** |
+
+**Ao vivo, com `eval_rotacao`** (perda de detecção, os modelos lendo o MESMO vídeo):
+
+| faixa | 28/08 aleatório → **deitado** | 26/08 14:12 aleatório → **deitado** |
+|---|---|---|
+| deitado (1,0-1,2) | 5,63% → **7,83%** | 2,74% → 2,25% |
+| **muito deitado** | 14,64% → **13,63%** | 13,03% → **13,08%** |
+| GLOBAL | 6,16% → 6,33% | 2,82% → 2,81% |
+
+Na faixa-alvo, o braço deitado ganha 1,0 ponto numa gravação (no piso de ruído) e empata na outra;
+na faixa vizinha, perde 2,2 pontos numa e ganha 0,5 na outra. Não há ganho nas duas gravações,
+e a triagem concorda. **Reprovado.** O modelo em produção continua o `cards_backup_11`, que é,
+aliás, o melhor dos quatro na faixa muito deitada de 26/08 (11,07%).
+
+**O que isto fecha:** somado ao `backup_12` (abertura 180 do gerador), são **duas** tentativas de
+dar ao modelo mais índice deitado, e as duas sem efeito. Com o rótulo exato do gerador e sem mudar
+nenhuma imagem, a ênfase na condição não move a classe. Isso confirma o diagnóstico de 14/09: **o
+problema não é escassez, é invariância à rotação.** Não tente outra variação de "mais dado deitado".
+As portas que continuam abertas atacam a representação: `imgsz` 1600 (o índice deitado chega com
+59-67 px de altura a 1280) ou uma arquitetura maior.
+
+**Achado operacional: o treino é morto por falta de RAM na etapa FINAL.** O `ab-deitado3b` terminou as
+12 épocas e foi derrubado durante a validação final do Ultralytics, antes de compactar o `best.pt`
+(ficou com 16,9 MB contra 6,3 MB). O `ab_deitado3.pt` de 14/09 tem o mesmo tamanho, então a queda
+daquela noite provavelmente foi a mesma coisa. Os pesos salvos a cada época sobrevivem. Para igualar
+ao controle, basta `strip_optimizer` (de `ultralytics.utils.torch_utils`). Feche o navegador antes de
+treinar: com o Chrome aberto sobram ~5 GB livres de 15,3.
+
 #### O piso de ruído é ~1 ponto, não 0,3
 
 E este é o corolário que recalibra as conclusões anteriores. O braço A é a **mesma receita** do
