@@ -89,6 +89,22 @@ def test_tall_index_same_corner_two_guesses_still_merges():
     assert kept[0].card.code == "AS"
 
 
+def test_vizinha_na_DIAGONAL_nao_apaga_a_carta_colada():
+    """Regressão de 2026-09-16: o raio de fusão era um QUADRADO.
+
+    Caixas reais do frame 6646 da gravação 20260916-151028, A♠ colado no 4♣:
+    dx=26,5 e dy=20,5 px, os dois abaixo do raio de 27,3 — mas a distância é
+    33,5. Pelo quadrado o 4♣ (mais confiante) apagava a leitura CERTA do A♠, e
+    o A♣ errado ia à tela sozinho.
+    """
+    a_espadas = Detection(card=Card.from_label("AS"), confidence=0.84,
+                          box=(640, 650, 723, 760))
+    quatro_paus = Detection(card=Card.from_label("4C"), confidence=0.91,
+                            box=(669, 632, 747, 737))
+    kept = hand_instances([a_espadas, quatro_paus])
+    assert {d.card.code for d in kept} == {"AS", "4C"}
+
+
 def test_tight_fan_nine_distinct_corners_not_collapsed():
     # leque apertado: 9 cantos numa fileira, próximos mas distintos -> 9
     codes = ["AS", "2H", "3D", "4C", "5S", "6H", "7D", "8C", "9S"]

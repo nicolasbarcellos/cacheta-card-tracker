@@ -687,3 +687,47 @@ def test_ordem_nao_troca_quando_as_duas_cartas_estao_no_MESMO_x():
     for _ in range(4):
         r.update([d("7D", 400, y=100), d("10S", 201, y=160)])
     assert r.cards == antes[::-1]
+
+
+# --------------------------------------------------------------------------
+# AGITAÇÃO do leque (2026-09-16).
+
+def _leque(dx=0.0, dy=0.0):
+    return [d(c, 100 + i * 60 + dx, 100 + dy, size=40)
+            for i, c in enumerate(["AS", "2H", "3D", "4C", "5S"])]
+
+
+def test_leque_parado_e_calmo():
+    r = FanReader(calmo_max=0.05)
+    for _ in range(20):
+        r.update(_leque())
+    assert r.calmo
+    assert r.agitacao < 0.01
+
+
+def test_leque_sendo_mexido_fica_agitado():
+    r = FanReader(calmo_max=0.05)
+    for _ in range(10):
+        r.update(_leque())
+    for k in range(10):                       # 6 px/frame = 0,15 largura
+        r.update(_leque(dx=6 * k))
+    assert not r.calmo
+
+
+def test_leque_que_reaparece_precisa_provar_calma():
+    r = FanReader(calmo_max=0.05)
+    for _ in range(20):
+        r.update(_leque())
+    r.update([])
+    r.update(_leque())
+    assert not r.calmo
+    for _ in range(15):
+        r.update(_leque())
+    assert r.calmo
+
+
+def test_sem_calmo_max_o_leitor_e_sempre_calmo():
+    r = FanReader()
+    r.update(_leque())
+    r.update([])
+    assert r.calmo

@@ -46,7 +46,8 @@ class FanReader:
                  win_margin: float = 1.6,
                  frame_w: int = 0, frame_h: int = 0, borda: float = 0.0,
                  peso_min: float = 0.0, vao_grupo: float = 0.0,
-                 ordem_margem: float = 0.0, exibe_misses: int = 0):
+                 ordem_margem: float = 0.0, exibe_misses: int = 0,
+                 calmo_max: float = 0.0):
         self.match_dist = match_dist
         # Zona morta nas bordas do quadro. Uma carta que desce abaixo do
         # enquadramento tem o índice CORTADO, e o modelo palpita em cima de
@@ -107,6 +108,16 @@ class FanReader:
         # neste estado, em que segurar a mão é o comportamento pedido e não
         # defeito — ver `app/leitura.py`.
         self.congelado = False
+        # AGITAÇÃO do leque: quanto as cartas se moveram de um frame para o
+        # outro, em LARGURAS DE CAIXA, suavizado. Pedido do usuário em
+        # 2026-09-16: "enquanto ele perceber que tem uma mão mexendo no leque,
+        # é para manter as cartas que já estavam mostrando". Medido na partida
+        # daquele dia: leque parado p50 0,007; mão arrumando o leque p50 0,059
+        # (8x); jogo normal 0,021. Quem decide o que fazer com isso é o
+        # `StableHand` — o leitor só publica, como `congelado`.
+        self.calmo_max = calmo_max
+        self.agitacao = 0.0
+        self._centros_anteriores: list | None = None
         # Quantas vezes cada código apareceu no quadro em cada um dos últimos
         # `window` frames. É a base do teto por código — ver `_recompute`.
         self._vistos: deque = deque(maxlen=window)
@@ -251,6 +262,7 @@ class FanReader:
         self.congelado = False
         if not detections:
             self.ultimo_leque = []
+            self._agita(None)
             self.congelado = True
             self._empty += 1
             if self._empty < self.expire or not (self._slots or self._displayed):
@@ -302,6 +314,7 @@ class FanReader:
             # conta como leque — senão a oclusão viraria um buraco na conta
             self.ultimo_leque = list(detections)
             self.congelado = True
+            self._agita(None)
             self._occluded += 1
             return False
 
@@ -336,6 +349,7 @@ class FanReader:
         # de 7,5% para 76% e a mão exibida mudava 4 vezes numa partida inteira.
         detections = self._so_o_leque(detections)
         self.ultimo_leque = list(detections)
+        self._agita(detections)
         self._vistos.append(Counter(d.card.code for d in detections))
 
         centers = [((d.box[0] + d.box[2]) / 2, (d.box[1] + d.box[3]) / 2)
@@ -424,6 +438,43 @@ class FanReader:
 
         self._funde_vagas_gemeas()
         return self._recompute()
+
+    # Suavização da agitação: ~0,3 s para esquecer um tranco a 30 fps.
+    ALFA_AGITACAO = 0.3
+    # Leque que some (quadro vazio, oclusão) e volta chega AGITADO: não se sabe
+    # como ele foi remontado, então a mão nova tem de provar calma primeiro.
+    AGITACAO_AO_REAPARECER = 1.0
+
+    def _agita(self, detections):
+        """Atualiza `agitacao` com o movimento do leque neste frame.
+
+        Movimento de cada carta = distância ao centro mais próximo do frame
+        anterior; o do leque é a MEDIANA, dividida pela menor dimensão mediana
+        da caixa (adimensional, como `_so_o_leque`: em px o limiar dependeria
+        da distância à câmera). A mediana ignora uma carta só se mexendo por
+        erro de detecção; a mão remexendo o leque move várias.
+        """
+        if not detections or len(detections) < 3:
+            self._centros_anteriores = None
+            self.agitacao = max(self.agitacao, self.AGITACAO_AO_REAPARECER)
+            return
+        centros = [((d.box[0] + d.box[2]) / 2, (d.box[1] + d.box[3]) / 2)
+                   for d in detections]
+        anteriores = self._centros_anteriores
+        self._centros_anteriores = centros
+        if anteriores is None:
+            return
+        desl = sorted(min(((cx - px) ** 2 + (cy - py) ** 2) ** 0.5
+                          for px, py in anteriores) for cx, cy in centros)
+        larg = sorted(max(min(d.box[2] - d.box[0], d.box[3] - d.box[1]), 1)
+                      for d in detections)
+        mov = desl[len(desl) // 2] / larg[len(larg) // 2]
+        self.agitacao += self.ALFA_AGITACAO * (mov - self.agitacao)
+
+    @property
+    def calmo(self) -> bool:
+        """Leque parado o bastante para a TELA aceitar uma mão nova."""
+        return not self.calmo_max or self.agitacao < self.calmo_max
 
     def _rotulo_bruto(self, s) -> str | None:
         """O que a vaga é hoje: o rótulo exibido, ou o mais votado se não há."""
@@ -706,4 +757,6 @@ class FanReader:
         self._empty = 0
         self._occluded = 0
         self.ultimo_leque = []
+        self.agitacao = 0.0
+        self._centros_anteriores = None
         self._vistos.clear()

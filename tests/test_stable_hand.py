@@ -170,3 +170,52 @@ def test_reset_clears_lock():
     feed(sh, NINE, 20)
     sh.reset()
     assert sh.cards == []
+
+
+# --------------------------------------------------------------------------
+# Leque AGITADO: a tela segura a mão que já mostrava (pedido de 2026-09-16).
+
+def test_leque_agitado_nao_troca_a_mao_da_tela():
+    """Com mão mexendo no leque a leitura passa por mãos erradas ESTÁVEIS.
+
+    Medido na partida de 16/09: arrumando o leque, a tela mostrou 1 carta,
+    depois 8♦ duplicado, depois um 8♠ que não existia — cinco mãos em 6 s.
+    """
+    sh = StableHand(lock_frames=12)
+    feed(sh, NINE, 20)
+    bagunca = ["8D"]
+    for _ in range(60):
+        sh.update(bagunca, calmo=False)
+    assert sorted(sh.cards) == sorted(NINE)
+
+
+def test_leque_volta_a_ficar_calmo_e_a_mao_nova_entra():
+    sh = StableHand(lock_frames=12)
+    feed(sh, NINE, 20)
+    nova = NINE[:-1] + ["KD"]
+    for _ in range(30):
+        sh.update(nova, calmo=False)          # agitado: ainda não conta
+    assert sorted(sh.cards) == sorted(NINE)
+    for _ in range(12):
+        sh.update(nova, calmo=True)
+    assert sorted(sh.cards) == sorted(nova)
+
+
+def test_mao_VAZIA_entra_mesmo_com_o_leitor_agitado():
+    """Abaixar as cartas deixa o quadro vazio, que o leitor conta como
+    agitado. Sem a exceção a tela ficava exibindo a mão para sempre."""
+    sh = StableHand(lock_frames=12)
+    feed(sh, NINE, 20)
+    for _ in range(40):
+        sh.update([], calmo=False)
+    assert sh.cards == []
+
+
+def test_leque_agitado_nao_reordena_a_tela():
+    sh = StableHand(lock_frames=12)
+    feed(sh, NINE, 20)
+    embaralhada = list(reversed(NINE))
+    sh.update(embaralhada, calmo=False)
+    assert sh.cards == NINE
+    sh.update(embaralhada, calmo=True)
+    assert sh.cards == embaralhada

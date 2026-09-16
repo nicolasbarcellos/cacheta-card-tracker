@@ -174,14 +174,14 @@ def test_sem_cam_fps_nada_e_pedido_ao_driver(monkeypatch):
 # --------------------------------------------------------------------------
 # vision_loop: a volta repetida não paga inferência de novo.
 
-def test_frame_repetido_NAO_paga_inferencia_de_novo(monkeypatch):
-    """A inferência é determinística: re-inferir a mesma imagem dá o mesmo
-    resultado e queima 19-22 ms de GPU por volta.
+def test_imagem_repetida_NAO_conta_volta_nem_paga_inferencia(monkeypatch):
+    """Só imagem NOVA avança o pipeline.
 
-    Medido em 2026-09-03: 1-37% das voltas eram repetição, conforme a gravação.
-    O teste fixa as duas metades do contrato — a inferência não repete E o
-    pipeline continua recebendo a mesma detecção, porque todo parâmetro é
-    contado em VOLTAS DO LAÇO.
+    Até 2026-09-16 a volta repetida pulava a inferência mas continuava
+    alimentando o `process_frame` — e, sem custo nenhum, o laço disparava a
+    280-570 voltas/s sempre que a câmera ficava mais lenta que a GPU. Como todo
+    parâmetro é contado em VOLTAS, `lock_frames=20` passava a valer menos de
+    0,1 s e a tela lia o vulto do leque antes de ele parar.
     """
     import numpy as np
 
@@ -225,7 +225,6 @@ def test_frame_repetido_NAO_paga_inferencia_de_novo(monkeypatch):
     vision_loop({"hand": CamFalsa()}, detector, GameTracker(), {},
                 RodaNVezes(4), FanReader(), StableHand())
 
-    assert len(vistos) == 4, "a volta repetida continua alimentando o pipeline"
     assert detector.chamadas == 2, "só 2 capturas distintas = só 2 inferências"
-    assert all(d is vistos[0] for d in vistos[:3]), \
-        "a volta repetida tem de reaproveitar a MESMA detecção"
+    assert len(vistos) == 2, \
+        "imagem repetida não pode contar volta: é ela que dá tempo aos parâmetros"

@@ -177,6 +177,14 @@ class Config:
     # leque ficam a 44-111 px (p05 = 69), então a margem separa com folga.
     # Ver `FanReader._ordena`.
     fan_ordem_margem: float = 0.05
+    # AGITAÇÃO máxima do leque (larguras de caixa por frame, suavizada) para a
+    # tela aceitar mão nova ou reordenar. Acima disso há mão mexendo no leque e
+    # a tela segura o que já mostrava. 0 = desligado. Ver `FanReader._agita`.
+    # Pedido do usuário em 2026-09-16. Varrido nas 14 gravações (0,05 / 0,08 /
+    # 0,12): 0,05 corta mais tremor mas leva o atraso a 1,9 s numa delas; 0,12
+    # quase não corta. 0,08 corta ~metade das mãos que duram < 2 s na tela por
+    # ~0,1 s de atraso típico.
+    fan_calmo_max: float = 0.08
     fan_vao_grupo: float = 2.5
     # Frames com a MESMA leitura antes de trocar a mão exibida. Com 12 (~0,8s)
     # uma leitura errada durante a organização das cartas na mão durava tempo

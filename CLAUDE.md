@@ -386,6 +386,95 @@ com teste):
 medida e pode servir aos outros modelos. Só não é mais o alvo — as seções sobre nota de compra e
 descarte, meta de aceite e gabarito ficam como REGISTRO, não como objetivo.
 
+### Sessão AO VIVO de 2026-09-16: três consertos que o usuário viu na mesa
+
+Sessão com o painel e cinco gravações curtas (`gravacoes/20260916-*`). Os três consertos saíram de
+defeitos que o usuário relatou jogando, e os três foram aprovados por ele ao vivo ("está ótimo").
+
+**1. A volta repetida do laço voltou a não contar (`app/main.py`).** Relato: *"a IA está lendo as
+cartas muito rápido... quando puxo o leque e a câmera pega um vulto, ela já está lendo"*. Não era
+`lock_frames` baixo: o `7c00b8d` (14/09) tirou a inferência da volta repetida e MANTEVE o
+`process_frame` nela, e com isso a volta repetida passou a custar zero. Enquanto a câmera deu 45,8
+fps ninguém viu; neste dia ela entregou 30 (pedimos 60 — provável pouca luz) e o laço disparou a
+**280-570 voltas/s**, `lock_frames=20` virando **<0,1 s** e `fan_min_appear` aceitando vaga de vulto
+em ~20 ms. Agora só imagem NOVA avança o pipeline: o laço anda na taxa da câmera (30-46), que é a
+faixa em que todo parâmetro foi medido. **O prognóstico da seção do FPS ("a janela foi de 0,48 s
+para 0,44 s") só vale com a câmera acima da GPU** — abaixo dela, sem este conserto, a janela desaba.
+Lição: ao ouvir "esperar mais", confira primeiro no `[fps]` se a espera em SEGUNDOS ainda é a medida.
+
+**2. O raio de fusão do `hand_instances` virou CÍRCULO (`app/detector.py`).** O risco latente
+registrado em 25/08 ("o raio é um QUADRADO") custou na tela: com o A♠ colado no 4♣, a quina fez o 4♣
+apagar a leitura CERTA do A♠ **60 vezes em 10 s**, e o A♣ (a caixa inchando e engolindo o pip de
+paus do vizinho, o mecanismo do 9♠ de 26/08) ficou votando sozinho — **102 frames de A♣ na tela →
+0** no replay da mesma gravação. Nas 11 gravações antigas: contradição melhora em 6, piora em 3 (até
++0,7), excesso/atraso/cobertura iguais, ordem piora ~1 ponto em duas — tudo na faixa do ruído. Ao
+vivo, com o mesmo leque, sobrou UM A♣ de 1,1 s, e esse é erro de MODELO puro (A♣ a 0,80-0,91 acima
+do A♠ no mesmo canto), não de fusão. Guardado por `test_vizinha_na_DIAGONAL_nao_apaga_a_carta_colada`
+(caixas reais do frame 6646), conferido por mutação.
+
+**3. Trava de AGITAÇÃO: com mão mexendo no leque, a tela segura a mão anterior.** Pedido explícito:
+*"enquanto ele perceber que tem uma mão mexendo no leque e bagunçando, é para manter as cartas que
+já estavam mostrando"*. O `FanReader` publica `agitacao` (mediana do deslocamento das cartas entre
+frames, em larguras de caixa, suavizada com alfa 0,3) e `calmo`; o `StableHand.update(calmo=)` zera
+a contagem de estabilidade e não reordena enquanto agitado. Medido na partida das 15:47: leque
+parado p50 **0,007**, mão arrumando p50 **0,059**, jogo normal 0,021. **Mão VAZIA entra mesmo
+agitada** — o quadro vazio conta como agitado, e sem a exceção a tela ficou 60 s exibindo 9 cartas
+com a câmera vazia (achado na primeira varredura). No trecho da bagunça daquela partida a tela
+mostrava 1 carta, depois 8♦ duplicado, depois um 8♠ inexistente (5 mãos em 6 s); com a trava, segura
+e vai direto às 9 certas.
+
+`fan_calmo_max` varrido nas 14 gravações (mãos exibidas por < 2 s, somadas: 132 sem trava):
+
+| limite | mãos < 2 s | atraso típico | pior atraso | pior cobertura |
+|---|---|---|---|---|
+| 0,05 | ~60 | +0,1-0,2 s | **1,91 s** | 88,8% (era 96,2%) |
+| **0,08** | **74** | **~+0,1 s** | 1,20 s | 89,3% |
+| 0,12 | ~95 | ~0 | 0,92 s | 90,3% |
+
+Ficou 0,08. Guardado por 8 testes (`test_stable_hand.py`, `test_hand_reader.py`), com as três
+metades conferidas por mutação (sem trava, sem a exceção da mão vazia, reordenando agitado).
+**Ressalva: a trava ainda não foi exercitada numa bagunça AO VIVO** — a partida das 16:07 não teve
+nenhuma, e ali ela só custou +0,2 s de atraso.
+
+#### Carta EMBAIXO de carta: investigado e NÃO consertado
+
+Partida das 15:47, t=107-124 s: tela com **8 cartas por 17 s**, leque parado, sem o 5♠. Mecanismo:
+o 5♠ ficou a 38 px do 3♠ (vizinhas normais: ≥ 69 px), com o glifo meio coberto, e **o modelo o lê
+como "3S" em ~metade dos frames**. Duas leituras "3S" a < 50 px são o "mesmo canto lido duas vezes"
+(regra de 04/08, real), a vaga fica com votos empatados (5S 25 × 3S 23) e a outra carta é descartada
+ou fundida como gêmea. Três variações MEDIDAS e REPROVADAS, não repita:
+
+- regra de gêmeas pelo líder ATUAL dos votos em vez do rótulo guardado → igual, 8 cartas;
+- aceitar par de leituras fortes (≥ 0,7) coladas como duas cartas → igual, 8 cartas (o `fan_peso_min`
+  corta a nova como duplicata fraca);
+- isso mais `fan_peso_min` desligado → 9 cartas, **mas "3S 3S"** — e desligar o piso já foi medido em
+  19/08 levando a contradição de 7,5% a 32,7%.
+
+A informação "é um 5♠" não chega ao pipeline; qualquer regra só escolhe QUAL erro exibir. O conserto
+é físico (índice de cada carta visível) ou de modelo (índice parcialmente coberto).
+
+#### A perda de detecção é do MOVIMENTO, e a rotação a multiplica
+
+Pergunta: por que o leque aberto e PARADO (15:40) perdeu 0,26% no índice muito deitado, contra
+12-15% das partidas de 26/08 e 28/08? Não é câmera nem luz nem código: a partida de 15:47, mesmo
+dia e mesma câmera, perdeu **12,4%**. Repartindo a perda pela `agitacao` do leitor:
+
+| perda de detecção | parado (< 0,02) | leve | mexendo (≥ 0,08) |
+|---|---|---|---|
+| partida 16/09 15:47 — global | **2,6%** | 6,0% | **21%** |
+| partida 28/08 — global | **3,0%** | 7,1% | **23%** |
+| 16/09 — em pé / muito deitado | 0,4% / 6,6% | 4,3% / 16% | 19% / 38% |
+| teste posado 16/09 15:40 — global | 0,08% | 0,4% | 9% |
+
+Duas partidas com três semanas de distância dão os mesmos números. O posado ficou parado 84% do
+tempo; a partida, 48%. **A nitidez (variância do Laplaciano no retângulo do leque) cai pela metade
+com movimento**: 4.499 parado, 3.276 leve, 2.349 mexendo — com a câmera a 30 fps por pouca luz, a
+exposição longa borra. Hipótese NÃO testada ainda: mais luz → exposição curta → menos borrão e 60 fps
+de volta. Parado, sobra pouco (5 inícios de perda em índice muito deitado na partida): 3 são o
+POLEGAR sobre a carta da ponta (no posado o leque era segurado pela base) e 2 são índice girado ~90°
+totalmente visível que o modelo não lê — a fraqueza de rotação já conhecida. Na tela o efeito é
+menor do que a perda sugere, porque a trava de agitação segura a mão justamente nesses momentos.
+
 ## Comandos
 
 ```powershell

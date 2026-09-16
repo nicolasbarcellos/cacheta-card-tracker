@@ -41,6 +41,7 @@ class StableHand:
         self._last_live: list[str] = []
         self._stable = 0
         self._locked: list[str] = []
+        self._calmo = True
 
     def _candidate(self) -> list[str]:
         """Multiconjunto das cartas com score alto, NA ORDEM da leitura viva.
@@ -69,7 +70,15 @@ class StableHand:
                 usados[code] += 1
         return out
 
-    def update(self, live_cards) -> bool:
+    def update(self, live_cards, calmo: bool = True) -> bool:
+        """`calmo=False` = há mão mexendo no leque (`FanReader.calmo`).
+
+        Pedido do usuário em 2026-09-16: enquanto o leque está sendo arrumado,
+        a tela mantém a mão que já mostrava. Agitado, a contagem de estabilidade
+        ZERA — a mão nova precisa de `lock_frames` seguidos de leque parado — e
+        a ordem exibida não acompanha a leitura viva (ver `cards`).
+        """
+        self._calmo = calmo
         # score por instância: 7H,7H viram (7H,0) e (7H,1)
         self._last_live = list(live_cards)
         seen = Counter()
@@ -95,6 +104,12 @@ class StableHand:
         else:
             self._last_candidate = cand_key
             self._stable = 1
+        # Mão VAZIA não é bagunça: é o jogador abaixando as cartas, e o quadro
+        # vazio conta como agitado no leitor. Sem esta exceção a tela nunca
+        # zerava a mão — medido na partida de 16/09, que ficou 60 s exibindo
+        # 9 cartas com a câmera vazia.
+        if not calmo and candidate:
+            self._stable = 0
 
         # Qualquer tamanho serve — o leitor não sabe que jogo é este. A única
         # exigência é ESTABILIDADE: a bagunça da transição (a mão passando na
@@ -127,7 +142,8 @@ class StableHand:
         transição), a última ordem boa é preservada — senão o overlay ficaria
         remexendo as cartas a cada frame borrado, que é o problema oposto.
         """
-        if self._locked and Counter(self._last_live) == Counter(self._locked):
+        if (self._calmo and self._locked
+                and Counter(self._last_live) == Counter(self._locked)):
             return list(self._last_live)
         return list(self._locked)
 

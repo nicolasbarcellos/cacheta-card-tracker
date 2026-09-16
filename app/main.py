@@ -53,10 +53,10 @@ class FpsMeter:
             self.fps = self._n / dt
             self.fps_distintos = self._novos / dt
             repetidos = 100 * (1 - self._novos / self._n) if self._n else 0.0
-            # lock_frames é contado em VOLTAS DO LAÇO (process_frame roda a
-            # cada volta, repetida ou não), então a conversão para segundos usa
-            # a taxa do laço — é a taxa da CÂMERA que diz quanta imagem nova
-            # entrou nessa janela.
+            # lock_frames é contado em VOLTAS DO LAÇO, e desde 2026-09-16 só a
+            # imagem NOVA conta volta — então as duas taxas saem iguais e
+            # "repetidos" fica em 0%. Se voltarem a divergir, a volta repetida
+            # está de novo alimentando o pipeline de graça.
             print(f"[fps] laço {self.fps:.1f} | câmera {self.fps_distintos:.1f} "
                   f"({repetidos:.0f}% repetidos)  "
                   f"(lock_frames={config.lock_frames} ~ "
@@ -97,7 +97,7 @@ def process_frame(detections_hand, tracker, hand_view, hand_lock,
     é o pipeline de verdade, e não uma reimplementação que pode divergir.
     """
     hand_view.update(hand_instances(detections_hand))
-    trocou = hand_lock.update(hand_view.cards)
+    trocou = hand_lock.update(hand_view.cards, calmo=hand_view.calmo)
     exibida = hand_lock.cards
     cards = [Card.from_label(c) for c in exibida]
 
@@ -124,7 +124,6 @@ def vision_loop(cams, detector, tracker, annotated, running,
                 hand_view, hand_lock, recorder=None):
     fps = FpsMeter()
     ultimo_seq = -1
-    dets_hand = None
     while running.is_set():
         frame, seq = cams["hand"].read_seq()
         novo = seq != ultimo_seq
@@ -138,29 +137,36 @@ def vision_loop(cams, detector, tracker, annotated, running,
             # vazias (o laço gira a 6000/s sem inferência), que entulhavam a
             # gravação e faziam o FPS médio sair 253 em vez de 35.
             continue
-        if novo or dets_hand is None:
-            dets_hand = detector.detect(frame)
-            annotated["hand"] = draw_boxes(frame, dets_hand)
-        # FRAME REPETIDO: reaproveita a detecção em vez de re-inferir a MESMA
-        # imagem. Não muda NADA do que o pipeline vê — a inferência é
-        # determinística, e é justamente por isso que a medição de 2026-09-03
-        # conseguiu contar as repetições comparando detecções byte a byte (1 a
-        # 37% delas, conforme a gravação). O que ela devolve é a folga de GPU
-        # que estava sendo queimada: nesta máquina a inferência custa 19-22 ms,
-        # e num terço das voltas ela era gasta para chegar ao mesmo resultado.
-        #
-        # `process_frame` continua rodando na volta repetida DE PROPÓSITO: todo
-        # parâmetro do pipeline é contado em VOLTAS DO LAÇO e foi afinado
-        # assim. Pular a volta inteira mudaria o significado de `lock_frames`,
-        # `fan_window` e `fan_expire` de uma vez — é outra mudança, e precisa
-        # da sua própria medição.
+        if not novo:
+            # IMAGEM REPETIDA: a volta NÃO conta. Todo parâmetro do pipeline
+            # (`lock_frames`, `fan_min_appear`, `fan_expire`...) é contado em
+            # VOLTAS DO LAÇO, e elas só valem tempo se custarem alguma coisa.
+            #
+            # O conserto de 2026-09-14 tirou a inferência da volta repetida e
+            # manteve o `process_frame` nela — e com isso a volta repetida
+            # passou a custar ZERO. Enquanto a câmera deu 45,8 fps a GPU
+            # continuou sendo o teto e ninguém viu. Em 2026-09-16 a câmera caiu
+            # para 30 (pouca luz) e o laço disparou a 280-570 voltas/s:
+            # `lock_frames=20` passou a valer MENOS DE 0,1 s, e o `min_appear`
+            # aceitava vaga de um vulto em ~20 ms. O usuário viu antes do log:
+            # "quando eu puxo um leque e a câmera pega um vulto, ela já está
+            # lendo as cartas".
+            #
+            # Contar só imagem NOVA amarra a volta à câmera (30-46/s), que é a
+            # faixa em que todos os parâmetros foram medidos (laço de 29-48 nas
+            # gravações). E o teste em disco de 2026-09-15 já tinha mostrado
+            # que tirar as repetições não move a nota da tela.
+            time.sleep(0.002)
+            continue
+        dets_hand = detector.detect(frame)
+        annotated["hand"] = draw_boxes(frame, dets_hand)
 
         # o índice vem ANTES do processamento: é ele que amarra a mão e os
         # eventos ao frame exato que os gerou
         i = recorder.frame(dets_hand, frame) if recorder is not None else 0
         process_frame(dets_hand, tracker, hand_view, hand_lock,
                       recorder=recorder, i=i)
-        fps.tick(novo)
+        fps.tick(True)
 
 
 def build_pipeline():
@@ -189,7 +195,8 @@ def build_pipeline():
                           peso_min=config.fan_peso_min,
                           vao_grupo=config.fan_vao_grupo,
                           ordem_margem=config.fan_ordem_margem,
-                          exibe_misses=config.fan_exibe_misses)
+                          exibe_misses=config.fan_exibe_misses,
+                          calmo_max=config.fan_calmo_max)
     hand_lock = StableHand(lock_frames=config.lock_frames)
     return hand_view, hand_lock
 

@@ -68,7 +68,15 @@ def hand_instances(detections: list[Detection]) -> list[Detection]:
             kx, ky = (k.box[0] + k.box[2]) / 2, (k.box[1] + k.box[3]) / 2
             ksize = max(min(k.box[2] - k.box[0], k.box[3] - k.box[1]), 1)
             thr = MERGE_FACTOR * min(size, ksize)  # só funde quase-coincidentes
-            if abs(cx - kx) < thr and abs(cy - ky) < thr:
+            # CÍRCULO, não quadrado. O `MERGE_FACTOR` sempre foi calibrado como
+            # RAIO, mas até 2026-09-16 a conta era `abs(dx) < thr and
+            # abs(dy) < thr`, cuja quina alcança `thr × 1,41`. Registrado em
+            # 25/08 como risco latente e sem custo medido; custou na tela em
+            # 16/09: com o A♠ colado no 4♣, a quina fez o 4♣ apagar a leitura
+            # CERTA do A♠ 60 vezes em 10 s, e o A♣ (a caixa inchada engolindo o
+            # pip de paus do vizinho) ficou votando sozinho e foi à tela por
+            # 102 frames. Com o círculo: 0.
+            if (cx - kx) ** 2 + (cy - ky) ** 2 < thr * thr:
                 dup = True
                 break
         if not dup:
