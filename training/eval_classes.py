@@ -54,12 +54,28 @@ N_IMAGES = int(sys.argv[2]) if len(sys.argv) > 2 else 150
 # o sintético não gera aquela condição. Um dataset real de uma partida que o
 # modelo NÃO treinou é o único conjunto que mede o que importa.
 DATASET = Path(sys.argv[3]) if len(sys.argv) > 3 else None
+
+# --imgsz: a resolução da INFERÊNCIA. Existe porque este modelo é preso à
+# escala (medido em "Dado DIFÍCIL": ampliar o recorte 4x fez ele não detectar
+# nada em 28 de 31 casos), então um modelo treinado a 1600 avaliado a 1280
+# mede outra coisa. Sem a opção, a comparação entre dois modelos de resoluções
+# diferentes seria inválida em silêncio — que é o defeito que este arquivo já
+# cobra dos outros instrumentos de aceite.
+IMGSZ = None
+for i, a in enumerate(sys.argv):
+    if a == "--imgsz" and i + 1 < len(sys.argv):
+        IMGSZ = int(sys.argv[i + 1])
+    elif a.startswith("--imgsz="):
+        IMGSZ = int(a.split("=", 1)[1])
 sys.argv = [sys.argv[0]]
 
 from finetune_local import SYNTH, collect, split_pairs  # noqa: E402
 from ultralytics import YOLO  # noqa: E402
 
 from app.config import config  # noqa: E402
+
+if IMGSZ is None:
+    IMGSZ = config.detect_imgsz
 
 CONF = 0.10
 DIST_MAX = 90.0            # px: acima disso a predição é lixo, não é a carta
@@ -97,7 +113,7 @@ else:
     _treino, val = split_pairs(pares, seed=42)
     val = val[:N_IMAGES]
     fonte = f"sintético (de {len(pares)} geradas)"
-print(f"modelo: {MODEL_PATH}")
+print(f"modelo: {MODEL_PATH}  (inferencia a imgsz={IMGSZ})")
 print(f"validacao: {len(val)} imagens — {fonte}\n", flush=True)
 
 # abertura do leque por imagem: num leque FECHADO os índices ficam quase na
@@ -141,7 +157,7 @@ for k, (img_path, label_path) in enumerate(val):
     if not gts:
         continue
 
-    res = model.predict(img, conf=CONF, imgsz=config.detect_imgsz,
+    res = model.predict(img, conf=CONF, imgsz=IMGSZ,
                         agnostic_nms=False, verbose=False)[0]
 
     atribuidas: dict = defaultdict(list)

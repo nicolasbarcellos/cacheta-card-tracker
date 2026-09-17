@@ -184,6 +184,13 @@ def main():
         origem = args.dets if args.dets.exists() else args.gravacao / args.dets
     registros = carrega(origem)
     if args.redetectar:
+        # Os `--set` valem TAMBEM para a re-deteccao, e a ordem importa: eles
+        # eram aplicados so depois daqui, entao `--set detect_imgsz=1600
+        # --redetectar` lia o video inteiro a 1280 e a medicao saia errada em
+        # silencio. Este modelo e preso a escala, e comparar dois modelos
+        # treinados em resolucoes diferentes so faz sentido rodando cada um na
+        # SUA. Aplicar duas vezes e inofensivo (o valor e o mesmo).
+        aplica_overrides(args.set)
         registros = carrega(redetecta(args.gravacao, registros,
                                       args.redetectar, args.passo))
     gravados = [r for r in registros if r["t"] == "evento"]
