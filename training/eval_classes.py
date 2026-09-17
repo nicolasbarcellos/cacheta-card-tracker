@@ -45,6 +45,25 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "training"))
 
+# --imgsz sai do argv ANTES dos posicionais: senao ele ocupa a vaga do
+# DATASET e a medicao vai para o conjunto errado (ou nenhum).
+IMGSZ = None
+_argv = [sys.argv[0]]
+_i = 1
+while _i < len(sys.argv):
+    a = sys.argv[_i]
+    if a == "--imgsz" and _i + 1 < len(sys.argv):
+        IMGSZ = int(sys.argv[_i + 1])
+        _i += 2
+        continue
+    if a.startswith("--imgsz="):
+        IMGSZ = int(a.split("=", 1)[1])
+        _i += 1
+        continue
+    _argv.append(a)
+    _i += 1
+sys.argv = _argv
+
 MODEL_PATH = sys.argv[1] if len(sys.argv) > 1 else str(ROOT / "models" / "cards.pt")
 N_IMAGES = int(sys.argv[2]) if len(sys.argv) > 2 else 150
 # Terceiro argumento: um dataset REAL (ex.: training/datasets/real/<partida>,
@@ -55,18 +74,11 @@ N_IMAGES = int(sys.argv[2]) if len(sys.argv) > 2 else 150
 # modelo NÃO treinou é o único conjunto que mede o que importa.
 DATASET = Path(sys.argv[3]) if len(sys.argv) > 3 else None
 
-# --imgsz: a resolução da INFERÊNCIA. Existe porque este modelo é preso à
-# escala (medido em "Dado DIFÍCIL": ampliar o recorte 4x fez ele não detectar
-# nada em 28 de 31 casos), então um modelo treinado a 1600 avaliado a 1280
-# mede outra coisa. Sem a opção, a comparação entre dois modelos de resoluções
-# diferentes seria inválida em silêncio — que é o defeito que este arquivo já
-# cobra dos outros instrumentos de aceite.
-IMGSZ = None
-for i, a in enumerate(sys.argv):
-    if a == "--imgsz" and i + 1 < len(sys.argv):
-        IMGSZ = int(sys.argv[i + 1])
-    elif a.startswith("--imgsz="):
-        IMGSZ = int(a.split("=", 1)[1])
+# A resolução da INFERÊNCIA (--imgsz, lido acima) importa porque este modelo é
+# preso à escala: medido em "Dado DIFÍCIL", ampliar o recorte 4x fez ele não
+# detectar nada em 28 de 31 casos. Um modelo treinado a 1600 avaliado a 1280
+# mede outra coisa, e sem a opção a comparação entre modelos de resoluções
+# diferentes seria inválida em silêncio.
 sys.argv = [sys.argv[0]]
 
 from finetune_local import SYNTH, collect, split_pairs  # noqa: E402
