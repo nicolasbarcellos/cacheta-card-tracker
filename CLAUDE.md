@@ -627,7 +627,17 @@ repositório exige para o modelo aprender o glifo e não a posição. 140 frames
 correções 3D↔5D — **todas conferidas na folha de contato, com o glifo legível dentro da caixa**.
 
 **A ordem foi conferida A OLHO nas duas tomadas, e isso não é zelo: eu a tinha tirado da leitura
-dominante do MODELO, que contém o erro.** Rotular por uma ordem vinda do palpite do modelo é a
+dominante do MODELO, que contém o erro.**
+
+Os dois comandos, para a extração ser reproduzível (a mão é a verdade dita pelo operador, e o
+`gabarito_corrigido.json` de zero jogadas está versionado junto):
+
+```powershell
+python training/extrai_gravacao.py gravacoes/20260917-172356 --mao-fixa `
+    --mao-inicial "7C JS 9S 3D AS 7H 5D 3D 4C" --por-segmento 120 --intervalo 0.8
+python training/extrai_gravacao.py gravacoes/20260917-174349 --mao-fixa `
+    --mao-inicial "7C 3D JS 3D 7H 9S AS 4C 5D" --por-segmento 120 --intervalo 0.8
+``` Rotular por uma ordem vinda do palpite do modelo é a
 circularidade que o `auto_annotate.py` tem e que o `capture_rotulado.py` existe para quebrar.
 
 **A nota, medida na tomada 2 que ficou FORA do treino** (ordem diferente, sessão diferente):
