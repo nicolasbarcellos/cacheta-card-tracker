@@ -596,6 +596,70 @@ outra forma de tensor e partiria do COCO) e empata com a taxa da câmera. Antes 
 o que a medição de 16/09 diz: a perda é **16× maior com a mão mexendo** do que com o leque parado,
 no mesmo dia e mesma câmera. O maior ganho disponível não está no modelo.
 
+### Retreino de 2026-09-17: o 5♦ lido como 3♦, achado pelo USUÁRIO e morto com 15 min dele
+
+**O modelo em produção mudou: `cards.pt` agora é este retreino.** Rollback:
+`copy models\cards_backup_14.pt models\cards.pt`.
+
+Relato ao vivo, jogando: *"ele está confundindo o 5 de ouros com 3 de ouros e duplicando o 3 de
+ouros"*. Nenhuma métrica tinha apontado isso — a nota dizia só "contradição 30,3%", a pior já
+medida, e eu teria caçado o pipeline. **É a segunda vez que o usuário acha jogando o que o número
+não mostra** (a primeira foi o vaivém de ordem em 26/08).
+
+**O que a medição achou, e três conclusões minhas que caíram no caminho:**
+
+| hipótese | veredito |
+|---|---|
+| "é carta na mesa entrando no leque" | **falso** — 8.759 de 8.759 casos dentro da corrente do leque |
+| "é o índice deitado" (o alvo do dia) | **falso** — caixa do 5♦ certo e do 3♦ inventado têm a MESMA proporção (0,79, ~25% deitadas nas duas) |
+| "nos frames abertos ele lê os dois certo, então não é 5↔3" | **falso** — é sim, em 23% dos frames |
+
+O que sobrou: o modelo entrega **três ou mais `3D` em 39,4% dos frames**, e em 945 deles (23%) não
+há nenhum `5D`. A mão tinha **duas 3♦ de verdade** (dois baralhos — confirmado pelo usuário, e o
+pipeline deixa gêmeas passarem de propósito), então a terceira é invenção. Confusão de glifo fino,
+a família 5→3 que este arquivo registra desde julho.
+
+**O dado saiu da própria gravação, sem custar sessão.** A mão ficou CONSTANTE nos 3,5 min, então a
+verdade é o operador quem diz e o rótulo vem da POSIÇÃO no leque — o `capture_rotulado.py` sem
+sessão ao vivo. Foi o que o `--mao-fixa` passou a permitir (ver `extrai_gravacao.py`). Duas tomadas,
+**ordens diferentes das mesmas 9 cartas** (o 5♦ saiu da 7ª posição para a ponta), que é o que o
+repositório exige para o modelo aprender o glifo e não a posição. 140 frames, ~1.260 rótulos, 30
+correções 3D↔5D — **todas conferidas na folha de contato, com o glifo legível dentro da caixa**.
+
+**A ordem foi conferida A OLHO nas duas tomadas, e isso não é zelo: eu a tinha tirado da leitura
+dominante do MODELO, que contém o erro.** Rotular por uma ordem vinda do palpite do modelo é a
+circularidade que o `auto_annotate.py` tem e que o `capture_rotulado.py` existe para quebrar.
+
+**A nota, medida na tomada 2 que ficou FORA do treino** (ordem diferente, sessão diferente):
+
+| | `cards_backup_14` (antes) | **novo** |
+|---|---|---|
+| frames em que o 5♦ SOME (vira 3♦) | 7,4% | **1,0%** |
+| frames inventando 3+ × 3♦ | 22,0% | **6,0%** |
+| contradição na tela | 17,3% | **8,9%** |
+| ordem errada | 0,8% | **0,3%** |
+
+Sem regressão em nada: classe 99,5% → 99,5% no holdout real de 11/08, 98,6% → **98,7%** no
+`holdout-ranks`, cartas inventadas **0 → 0**. E melhora nas duas gravações antigas de teste:
+
+| | 26/08 14:12 | 28/08 |
+|---|---|---|
+| contradição | 10,2% → **9,5%** | 13,3% → **12,3%** |
+| excesso | 2,3% → 2,2% | 8,7% → **7,9%** |
+| ordem errada | 0,7% → 0,8% | 1,7% → **0,5%** |
+| vaivém | 12 → 12 | 22 → **2** |
+| cobertura | 96,7% → 96,7% | 94,8% → **95,3%** |
+| perda de detecção (global) | 2,16% → 2,38% | 6,32% → **5,42%** |
+
+A perda anda em direções opostas nas duas e as duas cabem no piso de ruído de ~1 ponto: sem sinal.
+Tudo o mais melhora ou empata.
+
+**A lição de método, e ela vale mais que o retreino.** No MESMO dia gastei duas rodadas de treino e
+várias horas no `imgsz` 1600 atacando o índice deitado — reprovado. **Quinze minutos do usuário
+segurando cartas renderam um ganho maior**, porque o dado real, rotulado pela posição, ataca o erro
+que existe de verdade em vez do erro que a métrica sugere. É a mesma lição do A♠ em 18/08, e é a
+terceira vez que ela aparece.
+
 ## Comandos
 
 ```powershell
