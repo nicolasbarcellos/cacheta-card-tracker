@@ -534,6 +534,68 @@ tentativa de "dar mais da condição ao modelo" a falhar pelo mesmo motivo das o
 
 Custo da refutação: 4 minutos de disco contra ~2 h de treino. **Meça, não deduza** — de novo.
 
+#### `imgsz` 1600: REPROVADO, e a triagem sintética errou o palpite (2026-09-17)
+
+Era **a última porta nomeada** por "as portas que continuam abertas atacam a representação". A
+aposta tinha um mecanismo novo, achado ao conferir as resoluções do dataset: os **789 frames reais**
+são 1920×1080 e o Ultralytics reduz o lado maior a `imgsz`, então **hoje eles entram no treino
+encolhidos a 1280 — perdem 33% linear** antes de o modelo os ver, enquanto o sintético (1280×720)
+entra inteiro. E o índice muito deitado é o mais BAIXO de todas as faixas (59-67 px de altura),
+justamente onde a classe desaba.
+
+A/B com a receita do `backup_11` reproduzida número a número (2.988 imagens, 1.133 reais = 38%, 55
+negativos, holdouts de sempre), **e com o controle a 1280 treinado no mesmo dia** — o
+`ab-fliplr05` não serve mais de controle porque viu os 75 frames que o `NAO_TREINAR` de 14/09 tirou.
+
+**Critério 1 — triagem sintética: APROVOU, e com folga.**
+
+| faixa | controle 1280 | braço 1600 |
+|---|---|---|
+| em pé | 98,4% | 98,2% |
+| quase deitado | 98,9% | 100,0% |
+| deitado (1,0-1,2) | 98,7% | **96,1%** |
+| **muito deitado (≥1,2)** | **89,2%** | **93,7%** |
+| deitado total (≥1,0) | 93,9% | 94,8% |
+
++4,5 pontos na faixa alvo — o maior movimento que qualquer tentativa já produziu ali (as duas de
+"mais dado deitado" moveram 0 e −1,2). O controle reproduziu o 89,2% histórico, o que valida a
+comparação.
+
+**Critério 2 — `eval_rotacao` ao vivo: REPROVOU nas DUAS gravações**, e não por pouco:
+
+| faixa | 28/08 ctrl → 1600 | 26/08 14:12 ctrl → 1600 |
+|---|---|---|
+| em pé | 4,35% → 4,44% | 0,86% → 0,85% |
+| deitado (1,0-1,2) | 4,57% → **6,32%** | 2,23% → **3,17%** |
+| **muito deitado** | 14,31% → **16,96%** | 11,86% → **13,64%** |
+| GLOBAL | 6,16% → **7,05%** | 2,31% → **2,56%** |
+
+E a TELA piora junto, que é o que decide: contradição **13,7% → 19,3%** em 28/08 e 10,1% → 11,6% em
+26/08, ordem 0,6% → 1,2% em 28/08. Atraso, excesso e cobertura ficam iguais.
+
+**Reprovado.** O modelo em produção continua o `cards_backup_11`. Pesos em
+`training/runs/ab-imgsz1600/weights/best.pt` e `models/ab_imgsz1600.pt` (não publicados), com o
+controle em `ab-ctrl1280`.
+
+**O achado de método é maior que o resultado: a triagem sintética NÃO serve como previsor.** Ela
+tinha sido introduzida em 14/09 como "triagem rápida de qualquer retreino que ataque rotação", e o
+`degrees=10` foi o primeiro teste — ela reprovou e o decisor confirmou. Este é o segundo, e ela
+**aprovou com +4,5 pontos exatamente a faixa em que o modelo depois perdeu 1,8-2,7 pontos ao vivo**.
+Uma concordância e uma discordância: ela mede sensibilidade ao defeito, não generalização, e **não
+pode decidir nada sozinha**. Quem decide continua sendo `eval_rotacao.py` nas gravações.
+
+Hipótese do porquê, **NÃO medida**: a validação sintética é 1280×720 ampliada para 1600, ou seja
+in-distribution para o braço (que treinou nessas mesmas imagens ampliadas), enquanto o frame real
+vem de vídeo MJPG reduzido de 1920 para 1600 em vez de 1280 — menos redução, menos supressão do
+artefato de compressão.
+
+**O que isto fecha:** com o `imgsz` reprovado, as três famílias de ataque à rotação estão esgotadas
+— mais dado deitado (duas tentativas), augment de rotação (`degrees`, reprovado pelo rótulo) e
+resolução. **Sobra só a arquitetura maior**, que custa todo o fine-tuning desde julho (o `s` tem
+outra forma de tensor e partiria do COCO) e empata com a taxa da câmera. Antes de pagar isso, note
+o que a medição de 16/09 diz: a perda é **16× maior com a mão mexendo** do que com o leque parado,
+no mesmo dia e mesma câmera. O maior ganho disponível não está no modelo.
+
 ## Comandos
 
 ```powershell
@@ -2049,7 +2111,8 @@ dar ao modelo mais índice deitado, e as duas sem efeito. Com o rótulo exato do
 nenhuma imagem, a ênfase na condição não move a classe. Isso confirma o diagnóstico de 14/09: **o
 problema não é escassez, é invariância à rotação.** Não tente outra variação de "mais dado deitado".
 As portas que continuam abertas atacam a representação: `imgsz` 1600 (o índice deitado chega com
-59-67 px de altura a 1280) ou uma arquitetura maior.
+59-67 px de altura a 1280) ou uma arquitetura maior. **O `imgsz` 1600 foi medido em 2026-09-17 e
+REPROVADO** — ver "`imgsz` 1600: REPROVADO, e a triagem sintética errou o palpite".
 
 **Achado operacional: o treino é morto por falta de RAM na etapa FINAL.** O `ab-deitado3b` terminou as
 12 épocas e foi derrubado durante a validação final do Ultralytics, antes de compactar o `best.pt`
