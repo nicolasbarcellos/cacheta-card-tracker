@@ -342,6 +342,9 @@ def main():
     ap.add_argument("--intervalo", type=float, default=0.4,
                     help="segundos mínimos entre frames salvos (padrão 0.4)")
     ap.add_argument("--mao-inicial", help="ex.: \"10H QD JH 6S AD AH 9S KS 5D\"")
+    ap.add_argument("--mao-fixa", action="store_true",
+                    help="a mão NÃO muda na gravação inteira (sessão posada). "
+                         "Exige --mao-inicial e gabarito sem jogadas.")
     ap.add_argument("--so-analise", action="store_true",
                     help="não abre o vídeo nem salva nada; só imprime o plano")
     ap.add_argument("--detalhe", action="store_true",
@@ -360,7 +363,26 @@ def main():
           f"{len(frames)} frames gravados")
 
     mao0 = mao_inicial(maos, jogadas, args.mao_inicial)
-    segs = segmentos(mao0, jogadas)
+    if args.mao_fixa:
+        # Gravação POSADA: a mão não muda do começo ao fim, e quem garante isso
+        # é o operador, não o modelo. É o caso que o `capture_rotulado.py`
+        # cobria exigindo uma sessão ao vivo — aqui a mesma verdade sai de uma
+        # gravação comum, pelo mesmo mecanismo (o rótulo vem da POSIÇÃO no
+        # leque; o palpite do modelo é ignorado, que é o ponto).
+        #
+        # O `segmentos()` descarta de propósito o trecho após a última jogada,
+        # porque ali o gabarito não prova nada. Com a mão fixa não há jogada
+        # nenhuma, e o trecho inteiro é justamente o que vale.
+        if jogadas:
+            sys.exit("--mao-fixa exige gabarito SEM jogadas: a mão mudaria")
+        if not args.mao_inicial:
+            sys.exit("--mao-fixa exige --mao-inicial: a verdade tem de ser dita")
+        fim = max((f["ts"] for f in frames), default=0.0) + 1.0
+        segs = [(0.0, fim, Counter(mao0))]
+        print(f"mão FIXA declarada pelo operador, {len(mao0)} cartas, "
+              f"segmento único de 0 a {fim:.0f}s")
+    else:
+        segs = segmentos(mao0, jogadas)
 
     # ---- seleção dos frames, sem tocar no vídeo -------------------------
     plano = []          # (v, [(det, código)]) por frame escolhido
