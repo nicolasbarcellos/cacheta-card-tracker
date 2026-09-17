@@ -475,6 +475,65 @@ POLEGAR sobre a carta da ponta (no posado o leque era segurado pela base) e 2 s�
 totalmente visível que o modelo não lê — a fraqueza de rotação já conhecida. Na tela o efeito é
 menor do que a perda sugere, porque a trava de agitação segura a mão justamente nesses momentos.
 
+#### A NOTA das cinco gravações de 16/09, e o que ela fecha (2026-09-17)
+
+Medidas pela primeira vez, com o código de hoje (as detecções são gravadas brutas, então a nota vale
+para os três consertos do `bf0f3fe` mesmo nas quatro gravações feitas antes deles):
+
+| | atraso | contradição | excesso (leitor vivo) | vaivém | cobertura | perda detecção |
+|---|---|---|---|---|---|---|
+| 15:10 | 0,68 s | 9,3% | 11,9% (2,3%) | 0 | 85,0% | 1,28% |
+| 15:30 | 0,89 s | 4,9% | 6,6% (0,2%) | 0 | 85,7% | 0,50% |
+| 15:40 posado | 0,83 s | 2,5% | 3,9% (0,0%) | 0 | 92,9% | **0,32%** |
+| 15:47 bagunça | 0,68 s | 20,8% | 22,3% (2,2%) | 2 | 96,9% | **5,31%** |
+| 16:07 (pós-consertos) | 0,90 s | 22,7% | 9,5% (**0,0%**) | 0 | **60,2%** | sem vídeo |
+
+**A obrigação registrada em "o voto duplicado NÃO estava atrapalhando" — *olhar a ordem na próxima
+partida gravada* — está cumprida: o vaivém é ZERO em quatro das cinco e 2 na outra**, e a ordem
+errada com folga fica em 0,0-0,1%. A histerese de ordem (26/08) e o raio circular (16/09) seguram.
+O excesso com o leitor VIVO ficou em 0,0-2,3%, que é a faixa boa desde 26/08.
+
+**A trava de agitação está no valor certo, e agora há número do outro lado.** Varrendo
+`fan_calmo_max` nas três gravações mais movimentadas:
+
+| | 0,02 | **0,08 (hoje)** | 1000 (desligada) |
+|---|---|---|---|
+| 16:07 — cobertura | 53,9% | **60,2%** | 60,4% |
+| 16:07 — atraso | 1,56 s | **0,90 s** | 0,67 s |
+| 15:10 — cobertura | 77,8% | **85,0%** | 86,5% |
+| 15:47 — cobertura | 92,5% | **96,9%** | 96,9% |
+
+Desligá-la custa 0,0-1,5 ponto de cobertura e devolve 0,2 s de atraso; apertá-la para 0,02 cobra
+caro (cobertura 60,2% → 53,9%, atraso quase dobra). Ou seja, **a cobertura ruim de 16:07 NÃO é da
+trava** — 0,08 já está no platô.
+
+**O que 16/09 mede de verdade é a LUZ.** No mesmo dia, mesma câmera e mesmo baralho, o leque posado
+perde 0,32% das detecções e a partida com movimento perde 5,31% — **16×**. É o maior fator já medido
+neste projeto, e o conserto é físico. A hipótese do topo desta seção (mais luz → exposição curta →
+menos borrão → 60 fps de volta) continua sendo o próximo passo, e continua dependendo de uma
+gravação nova.
+
+#### Ensinar o modelo a ler carta BORRADA: refutado antes de treinar (2026-09-17)
+
+A ideia vinha direto da medição acima — se a perda é do movimento e o movimento borra, então falta
+borrão no treino. **Falso, e ao contrário.** Nitidez medida como variância do Laplaciano no
+retângulo do leque, com tudo reduzido a 1280 como o modelo vê (sem isso, mede-se o resize):
+
+| | p10 | p50 | p90 |
+|---|---|---|---|
+| **sintético (treino)** | **205** | **2.575** | 4.746 |
+| real 16/09 15:40 posado | 3.024 | 6.082 | 6.369 |
+| real 16/09 15:47 movimento | 1.975 | 4.766 | 7.710 |
+| real 26/08 14:12 | 1.372 | 3.074 | 5.326 |
+| real 28/08 | 1.572 | 3.780 | 5.336 |
+
+**As imagens de treino já são mais borradas que as reais em toda a distribuição**, e a cauda delas
+(p10 = 205) é um borrão que nenhuma partida produz — o `generate_fans.py` já aplica desfoque em 40%
+das imagens (`k` 3 ou 5) mais granulado em 50%. Não há vão a fechar, e teria sido a terceira
+tentativa de "dar mais da condição ao modelo" a falhar pelo mesmo motivo das outras duas.
+
+Custo da refutação: 4 minutos de disco contra ~2 h de treino. **Meça, não deduza** — de novo.
+
 ## Comandos
 
 ```powershell
