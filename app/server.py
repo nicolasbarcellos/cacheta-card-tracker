@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from app.cards import Card, InvalidCardLabel
+from app.config import config
 from app.tracker import GameTracker
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -147,10 +148,12 @@ def create_app(tracker: GameTracker,
         if frame is None:
             return None
         h, w = frame.shape[:2]
-        if w > 960:  # preview não precisa da resolução da detecção
-            frame = cv2.resize(frame, (960, int(h * 960 / w)))
+        larg = config.preview_largura
+        if larg and w > larg:
+            frame = cv2.resize(frame, (larg, int(h * larg / w)))
         ok, jpg = cv2.imencode(".jpg", frame,
-                               [cv2.IMWRITE_JPEG_QUALITY, 75])
+                               [cv2.IMWRITE_JPEG_QUALITY,
+                                config.preview_qualidade])
         return jpg.tobytes() if ok else None
 
     @app.get("/stream/{cam}")
@@ -160,7 +163,7 @@ def create_app(tracker: GameTracker,
                 # cache compartilhado entre abas; encode fora do event loop
                 cached = preview_cache.get(cam)
                 now = asyncio.get_event_loop().time()
-                if cached is None or now - cached[0] > 0.12:
+                if cached is None or now - cached[0] > config.preview_intervalo:
                     data = await asyncio.to_thread(_encode_preview, cam)
                     if data:
                         preview_cache[cam] = (now, data)
@@ -168,7 +171,7 @@ def create_app(tracker: GameTracker,
                 if cached:
                     yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n"
                            + cached[1] + b"\r\n")
-                await asyncio.sleep(0.12)
+                await asyncio.sleep(config.preview_intervalo)
         return StreamingResponse(
             frames(), media_type="multipart/x-mixed-replace; boundary=frame")
 

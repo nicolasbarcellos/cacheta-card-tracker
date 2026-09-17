@@ -26,18 +26,85 @@ class CameraStream:
         self._running = True
         self._warned = False
         self._pedir_fps = True         # cai para False se o pedido derrubar a câmera
+        self._backend = 0              # índice em BACKENDS; anda se o atual não abrir
+        self._backend_nome = ""
         self._thread = threading.Thread(target=self._loop, daemon=True)
         self._thread.start()
 
+    # O BACKEND é o teto real da taxa, e isso custou meses sem ninguém ver.
+    # Medido em 2026-09-17, na MESMA câmera (MX Brio), mesmo cabo, mesma luz,
+    # mesmo MJPG 1920x1080 com `CAP_PROP_FPS=60` pedido nos dois:
+    #
+    #     DSHOW -> driver DIZ 60, entrega  30,0
+    #     MSMF  -> driver diz 60, entrega  60,1
+    #
+    # O DirectShow aceita o `set()`, informa 60 em `get()` e entrega 30 — ou
+    # seja, mente nas duas pontas. Não é luz, não é USB e não é a câmera: dá
+    # 30,0 cravado até em 640x480, e forçar exposição de 1/128 s não passa de
+    # 30 (só escurece). A queda para DSHOW fica porque ele abre mais rápido e
+    # é o que este projeto usou desde sempre; o MSMF é que precisa provar.
+    #
+    # O ganho não é só o dobro de votos: a 60 fps a câmera é OBRIGADA a expor
+    # em no máximo 1/60 s, o que corta pela metade o borrão de movimento — e o
+    # borrão é a causa medida da perda de detecção (16x mais com a mão mexendo
+    # do que com o leque parado, medido em 16/09 no mesmo dia e mesma câmera).
+    # ...E MESMO ASSIM O MSMF FICA DE FORA, por um efeito colateral pior que
+    # os 10 fps que ele ganha. Medido na mesma sessão: quando a abertura dele
+    # estoura o tempo, a chamada continua PRESA numa thread que não dá para
+    # matar — e essa thread SEGURA a câmera. O DirectShow então enumera só os
+    # dispositivos livres, o índice 0 deixa de ser a Brio e passa a ser a
+    # webcam do notebook: o app abre, não acusa erro nenhum e lê a câmera
+    # ERRADA, em 720p. Foi o que aconteceu ao vivo em 2026-09-17.
+    #
+    # Para usar o MSMF é preciso sondá-lo num PROCESSO à parte, que possa ser
+    # morto de verdade. Enquanto isso não existir, 30 fps confiáveis valem
+    # mais que 40 com a câmera trocada — e a lista fica aqui, com a ordem
+    # pronta, para quando a sonda em processo separado for feita.
+    BACKENDS = (("DSHOW", cv2.CAP_DSHOW),)
+
+    # O MSMF pode TRAVAR DENTRO do `VideoCapture()` — medido em 2026-09-17:
+    # depois de o app morrer sem fechar a câmera, ele fica >20 s lá dentro
+    # enquanto o DSHOW abre em 0,6 s. Sem limite de tempo isso deixa o app
+    # CEGO e calado, que é pior do que os 30 fps do DSHOW. Não dá para
+    # interromper a chamada, então ela roda numa thread descartável: se
+    # estourar, o backend é abandonado e a vez passa para o seguinte.
+    ABRE_TIMEOUT = 8.0
+
+    def _abre_backend(self, backend, pedir_fps):
+        """Abre num thread à parte e devolve None se estourar o tempo."""
+        caixa = {}
+
+        def trabalho():
+            cap = cv2.VideoCapture(self.index, backend)
+            if not cap.isOpened():
+                cap.release()
+                return
+            # MJPG destrava fps em resoluções altas (YUY2 satura o USB em 1080p+)
+            cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+            if pedir_fps and self.fps:
+                cap.set(cv2.CAP_PROP_FPS, self.fps)
+            caixa["cap"] = cap
+
+        t = threading.Thread(target=trabalho, daemon=True)
+        t.start()
+        t.join(self.ABRE_TIMEOUT)
+        if t.is_alive():
+            return None                # a thread fica presa; é descartável
+        return caixa.get("cap")
+
     def _open(self, pedir_fps=True):
-        cap = cv2.VideoCapture(self.index, cv2.CAP_DSHOW)  # DSHOW: abre rápido no Windows
-        if not cap.isOpened():
-            cap.release()
-            return None
-        # MJPG destrava fps em resoluções altas (YUY2 satura o USB em 1080p+)
-        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+        for nome, backend in self.BACKENDS[self._backend:]:
+            cap = self._abre_backend(backend, pedir_fps)
+            if cap is not None:
+                self._backend_nome = nome
+                return cap
+            print(f"câmera {self.index}: {nome} não abriu em "
+                  f"{self.ABRE_TIMEOUT:g}s — tentando o próximo", flush=True)
+            self._backend += 1
+        self._backend = 0              # recomeça a busca na próxima tentativa
+        return None
         # A TAXA DA CÂMERA É O TETO DO PIPELINE, e até 2026-09-14 ninguém a
         # pedia: o DirectShow entregava o padrão (30) enquanto o laço girava a
         # 29-48, ou seja até um terço do trabalho da GPU era re-inferir a MESMA
@@ -45,9 +112,7 @@ class CameraStream:
         # DISTINTA batendo em 28-32 em todas). Como todo parâmetro é contado em
         # QUADROS, dobrar a taxa distinta faz `lock_frames=20` valer 0,33 s em
         # vez de 0,67 s — é o ganho mais barato que existe, e não toca o modelo.
-        if pedir_fps and self.fps:
-            cap.set(cv2.CAP_PROP_FPS, self.fps)
-        return cap
+
 
     def _anuncia(self):
         """Diz o que a câmera NEGOCIOU, não o que pedimos.
@@ -61,7 +126,8 @@ class CameraStream:
         self.fps_negociado = float(self.cap.get(cv2.CAP_PROP_FPS) or 0.0)
         pedido = f" (pedimos {self.fps})" if self.fps else ""
         print(f"câmera {self.index}: aberta {w}x{h} @ "
-              f"{self.fps_negociado:g} fps{pedido}", flush=True)
+              f"{self.fps_negociado:g} fps{pedido} "
+              f"[{self._backend_nome}]", flush=True)
         if self.fps and self.fps_negociado and self.fps_negociado < self.fps:
             print(f"câmera {self.index}: a câmera NÃO deu {self.fps} fps — o "
                   f"teto do pipeline continua em {self.fps_negociado:g}",
@@ -99,6 +165,16 @@ class CameraStream:
                           f"{self.fps} fps pedidos — reabrindo sem o pedido",
                           flush=True)
                     self._pedir_fps = False
+                elif primeiro_read and self._backend + 1 < len(self.BACKENDS):
+                    # abriu e não entregou imagem nem sem o pedido de taxa: o
+                    # suspeito passa a ser o BACKEND. Cair para o seguinte é o
+                    # que impede o MSMF de deixar o app cego numa máquina onde
+                    # ele não funcione — e isso não dá para testar sem câmera.
+                    self._backend += 1
+                    self._pedir_fps = True
+                    print(f"câmera {self.index}: {self._backend_nome} não "
+                          f"entregou imagem — caindo para "
+                          f"{self.BACKENDS[self._backend][0]}", flush=True)
                 # câmera caiu (cabo, outro app tomou): larga e tenta reabrir
                 self.cap.release()
                 self.cap = None

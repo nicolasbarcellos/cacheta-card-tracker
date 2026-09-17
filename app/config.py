@@ -240,5 +240,18 @@ class Config:
     server_host: str = "127.0.0.1"
     server_port: int = 8000
 
+    # PREVIEW do painel. Era 960 px / qualidade 75 / ~8 quadros por segundo,
+    # cravado no `server.py`, e isso enganava quem olhava: o usuário julgava a
+    # leitura por uma imagem degradada de propósito, e concluía "a qualidade
+    # está um lixo" sobre o que o MODELO vê — que é sempre 1920x1080, e que a
+    # gravação guarda CRU, sem passar por aqui.
+    #
+    # O preço de subir é CPU de encode, e ele compete com o laço que alimenta
+    # a GPU. Por isso é config, não constante: dá para medir a troca com o
+    # `[fps]` do próprio app, que publica a taxa do laço e a da câmera.
+    preview_largura: int = 1600    # 0 = sem redução (manda o quadro inteiro)
+    preview_qualidade: int = 92    # JPEG, 0-100
+    preview_intervalo: float = 0.05  # segundos entre quadros do preview
+
 
 config = Config()
