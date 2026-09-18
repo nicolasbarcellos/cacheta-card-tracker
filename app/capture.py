@@ -13,12 +13,15 @@ class CameraStream:
 
     RETRY_SECONDS = 2.0
 
-    def __init__(self, index: int, width: int, height: int, fps: int = 0):
+    def __init__(self, index: int, width: int, height: int, fps: int = 0,
+                 foco: int = 0):
         self.index = index
         self.width = width
         self.height = height
         self.fps = fps                 # 0 = aceita o padrão do driver
+        self.foco = foco               # 0 = deixa o AUTOfoco decidir
         self.fps_negociado = 0.0       # o que a câmera respondeu de verdade
+        self.foco_negociado = -1.0     # idem para o foco
         self.cap = None
         self._frame = None
         self._seq = 0                  # conta CAPTURAS, não leituras
@@ -85,6 +88,16 @@ class CameraStream:
             cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
             if pedir_fps and self.fps:
                 cap.set(cv2.CAP_PROP_FPS, self.fps)
+            # O AUTOFOCO MIRA O QUE PREENCHE O QUADRO, e com a câmera sobre a
+            # mesa isso é o FELTRO — não o leque, que fica mais perto. Medido
+            # em 2026-09-18, no estúdio: a gravação saiu com o foco parado em
+            # 14, nitidez 2.679 com o leque PARADO, contra ~4.000 no foco certo
+            # (~95, platô 85-105). Não é exposição: brilho 185 dentro do índice
+            # e 0,7% de pixel estourado. Reaferir com `scripts/afina_foco.py`
+            # sempre que a câmera ou a distância da mesa mudarem.
+            if self.foco:
+                cap.set(cv2.CAP_PROP_AUTOFOCUS, 0)
+                cap.set(cv2.CAP_PROP_FOCUS, self.foco)
             caixa["cap"] = cap
 
         t = threading.Thread(target=trabalho, daemon=True)
@@ -125,9 +138,14 @@ class CameraStream:
         h = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         self.fps_negociado = float(self.cap.get(cv2.CAP_PROP_FPS) or 0.0)
         pedido = f" (pedimos {self.fps})" if self.fps else ""
+        foco = ""
+        if self.foco:
+            self.foco_negociado = float(self.cap.get(cv2.CAP_PROP_FOCUS))
+            foco = (f" | foco FIXO {self.foco_negociado:g}"
+                    f" (pedimos {self.foco})")
         print(f"câmera {self.index}: aberta {w}x{h} @ "
               f"{self.fps_negociado:g} fps{pedido} "
-              f"[{self._backend_nome}]", flush=True)
+              f"[{self._backend_nome}]{foco}", flush=True)
         if self.fps and self.fps_negociado and self.fps_negociado < self.fps:
             print(f"câmera {self.index}: a câmera NÃO deu {self.fps} fps — o "
                   f"teto do pipeline continua em {self.fps_negociado:g}",

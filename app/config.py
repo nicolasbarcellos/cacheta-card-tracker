@@ -30,6 +30,18 @@ class Config:
     # Pedir não é obter: o `CameraStream` anuncia o que foi NEGOCIADO ao abrir
     # e volta sozinho para o padrão se o modo não for suportado.
     cam_fps: int = 60
+    # FOCO FIXO da câmera da mão (0 = deixa no automático).
+    # O autofoco mira o que PREENCHE o quadro. Com a câmera sobre a mesa, isso
+    # é o feltro — e o leque fica mais perto, fora do plano focado. Medido em
+    # 2026-09-18, no estúdio, varrendo o foco com `scripts/afina_foco.py`:
+    # nitidez no leque (Laplaciano a 1280) 501 no foco 0, 1.138 no 30, PICO
+    # ~4.000 entre 85 e 105, e 97 no 255. A gravação daquele dia saiu com o
+    # autofoco parado em 14 e nitidez 2.679 com o leque PARADO, contra 4.579
+    # da gravação de 16/09 — e não era luz: brilho 185 dentro do índice, 0,7%
+    # de pixel estourado. 95 é o meio do platô.
+    # REAFIRA ao mudar a câmera de lugar, a mesa de altura ou o modelo de
+    # webcam: o valor é da DISTÂNCIA, não do produto.
+    cam_foco: int = 95
     detect_imgsz: int = 1280  # resolução da inferência (cantos são pequenos)
     model_path: str = "models/cards.pt"
     min_confidence: float = 0.30  # baixo de propósito: a votação temporal

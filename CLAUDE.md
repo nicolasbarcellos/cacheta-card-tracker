@@ -670,6 +670,89 @@ segurando cartas renderam um ganho maior**, porque o dado real, rotulado pela po
 que existe de verdade em vez do erro que a métrica sugere. É a mesma lição do A♠ em 18/08, e é a
 terceira vez que ela aparece.
 
+### O FOCO estava no AUTOMÁTICO, e era o maior fator já medido (2026-09-18)
+
+Sessão ao vivo, em estúdio, para fazer o **teste da luz** que estava pendente desde 16/09. A
+hipótese era a que este arquivo registrava: *mais luz → exposição curta → menos borrão → menos
+perda*. **Ela está REFUTADA**, e o que apareceu no lugar vale muito mais.
+
+**A refutação, e o sinal que a denuncia.** Com luz de estúdio — brilho **185** dentro do índice e
+só **0,7%** de pixel estourado, ou seja luz de sobra e nada queimado — a primeira gravação saiu com
+nitidez **2.679 no leque PARADO**, contra 4.579 de 16/09 e 5.269 do leque posado. **Borrão com o
+objeto parado e luz de sobra não é exposição nem movimento: é FOCO.** Esse é o sinal que manda
+parar de mexer na luz.
+
+**O mecanismo é geométrico, não da câmera: o autofoco mira o que PREENCHE o quadro.** Com a câmera
+sobre a mesa, o que preenche é o feltro — e o leque fica mais perto, fora daquele plano. A câmera
+abriu com o foco em **14**. Varrendo o foco com o leque parado na posição de jogo
+(`scripts/afina_foco.py`, nitidez do Laplaciano no retângulo do leque, com o quadro reduzido a
+1280):
+
+| foco | 0 | 30 | 60 | **85-105** | 120 | 180 | 255 |
+|---|---|---|---|---|---|---|---|
+| nitidez no leque | 501 | 1.138 | 3.234 | **~4.000** | 1.025 | 505 | 97 |
+
+Pico estreito, platô de 85 a 105. `config.cam_foco = 95` (0 devolve ao automático).
+
+**O A/B controlado — mesma mesa, mesma luz, mesmo baralho, mesmo modelo, mesma pessoa, 20 minutos
+de diferença.** A perda repartida pela `agitacao` do leitor, que é o controle que impede "ele mexeu
+menos" de explicar o resultado:
+
+| perda de detecção | parado | leve | mexendo | global |
+|---|---|---|---|---|
+| autofoco (14:43) | 3,41% | 14,19% | 27,19% | **15,18%** |
+| **foco fixo 95 (15:50)** | **1,55%** | **4,89%** | **17,69%** | **3,75%** |
+
+Cai em TODAS as faixas, e por muito mais que o piso de ruído de ~1 ponto. O global cai mais que as
+faixas porque ele também mexeu menos na segunda (4,8% do tempo agitado contra 25,4%) — por isso a
+conclusão sai das faixas, não do global. Controle independente: a gravação de foco fixo bate também
+a de 16/09 em todas as faixas (2,57 / 5,98 / 21,25).
+
+E a TELA, que é o produto:
+
+| | autofoco | **foco fixo** | melhor anterior (26/08 14:12) |
+|---|---|---|---|
+| atraso | 0,95 s | 0,92 s | 0,57 s |
+| contradição | 13,5% | **9,3%** | 9,2% |
+| excesso (leitor vivo) | 16,2% (3,6%) | **0,3% (0,1%)** | 1,6% (0,0%) |
+| ordem errada | 2,9% | **0,0%** | 0,5% |
+| vaivém de ordem | 33 | **4** | 2 |
+| cobertura | 94,4% | **99,7%** | 97,3% |
+
+A nitidez confirma o mecanismo pela repartição: com o leque **parado** ela sobe 2.679 → **3.335**, e
+nas faixas com movimento fica igual (1.987 → 1.902 e 1.281 → 1.192). Foco conserta borrão ESTÁTICO;
+o de movimento continua sendo da exposição — e o `fan_calmo_max` é quem protege a tela ali.
+
+**Três armadilhas de medição desta sessão, todas caídas antes de virarem conclusão:**
+
+- **Não julgue foco pela contagem de cartas.** No A/B com o leque na mão, **quem rodava PRIMEIRO
+  ganhava** — nas duas ordens. O braço desce alguns milímetros a cada dezena de segundos e isso
+  mexe mais na contagem do que o foco. Só a nitidez decide; está escrito no docstring do
+  `afina_foco.py`.
+- **A primeira medição de nitidez estava contaminada.** Ela montava o "retângulo do leque" com
+  QUALQUER frame que tivesse detecção — inclusive os que só tinham o fantasma da mesa, e aí o
+  retângulo caía no feltro liso e puxava a mediana para baixo. Medir só em frames com **mão de
+  verdade** (≥7 detecções) é o conserto.
+- **A perda NÃO era do fantasma da mesa.** Repartida por vaga, ela está espalhada pelas 9 cartas
+  reais (pior na ponta direita: 4♣ 27,1% e 7♥ 21,2%); as vagas fantasmas valem 1,5% do total.
+
+**Bônus medido: a mesa de estúdio tem cartas IMPRESSAS no feltro** (J♥ Q♥ K♥ A♥ de um lado, J♠ Q♠
+K♠ do outro) e **o modelo não morde a isca** — 791 frames de mesa vazia, **zero detecções**. O
+retreino com negativos de 20/08 segura o caso que era o pesadelo do logo da parede. Sobra um
+fantasma fraco (`10H` a 0,30-0,40 em ~500 frames), do mesmo tamanho do que 16/09 já tinha (`KD`,
+541 frames).
+
+**Nota operacional que custou uma gravação:** o `python.exe` do venv é um LANÇADOR — ele sobe o app
+num processo FILHO. Mandar `CTRL_BREAK` para o processo que se lançou desliga o uvicorn mas não
+chega ao `recorder.close()`, e o índice do AVI sai quebrado (o mesmo sintoma de 28/08: contagem do
+AVI muito menor que a do `sessao.jsonl`). Para encerrar de fora é preciso achar o filho; de dentro,
+`Ctrl+C` na janela do app continua sendo o caminho. O vídeo quebrado continua utilizável lendo
+SEQUENCIALMENTE, que é o que os scripts de medição fazem.
+
+**Ressalva honesta:** é UM par de gravações. O efeito é de 3-4× e o mecanismo está medido por dois
+caminhos independentes (a varredura de foco e o A/B), mas a regra do repositório — exigir ganho em
+duas gravações — só estará cumprida na próxima partida.
+
 ## Comandos
 
 ```powershell
@@ -689,6 +772,11 @@ python scripts/mede_leitura.py gravacoes/<data>   # a NOTA: atraso, contradiçã
 python -m pytest                      # suíte completa (rápida: só código puro)
 python -m pytest tests/test_hand_reader.py::test_carta_duplicada_e_FRACA_nao_entra_na_mao
 ```
+
+`scripts/afina_foco.py` acha o FOCO fixo da câmera (não abre janela; segure o leque parado na
+posição de jogo, com o app FECHADO). O autofoco mira o feltro, que preenche o quadro, e não o
+leque, que fica mais perto — medido em 18/09: perda de detecção **15,18% → 3,75%** só com o foco
+travado. Reafira ao mudar a câmera de lugar ou a altura da mesa.
 
 Diagnóstico de câmera/modelo (todos abrem janela do OpenCV, `q` encerra):
 `scripts/check_cams.py` (índices/enquadramento) · `training/aim.py` (mirar) ·

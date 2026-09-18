@@ -101,6 +101,8 @@ class Cv2Falso:
     CAP_PROP_FRAME_WIDTH = "w"
     CAP_PROP_FRAME_HEIGHT = "h"
     CAP_PROP_FPS = "fps"
+    CAP_PROP_AUTOFOCUS = "autofoco"
+    CAP_PROP_FOCUS = "foco"
 
     def __init__(self, falha_com_fps=False):
         self.falha_com_fps = falha_com_fps
@@ -157,6 +159,42 @@ def test_pedido_de_fps_nao_suportado_NAO_derruba_a_camera(monkeypatch):
         assert cam._pedir_fps is False
         assert cv2_falso.abertas[0].props.get("fps") == 60
         assert cv2_falso.abertas[-1].props.get("fps") in (None, 0)
+    finally:
+        cam.stop()
+
+
+def test_foco_FIXO_desliga_o_autofoco_e_fixa_o_valor(monkeypatch):
+    """O autofoco mira o que PREENCHE o quadro — o feltro, não o leque.
+
+    Medido em 2026-09-18 no estúdio: a gravação saiu com o foco parado em 14 e
+    nitidez 2.679 no leque PARADO, contra ~4.000 no foco certo. Não adianta
+    fixar o valor sem desligar o automático: o driver sobrescreve na volta
+    seguinte.
+    """
+    cv2_falso = Cv2Falso()
+    cam = _camera(monkeypatch, cv2_falso, fps=60, foco=95)
+    try:
+        assert _espera(lambda: cam.read_seq()[0] is not None)
+        props = cv2_falso.abertas[0].props
+        assert props.get("autofoco") == 0, "fixar o foco sem desligar o auto não segura"
+        assert props.get("foco") == 95
+    finally:
+        cam.stop()
+
+
+def test_sem_cam_foco_o_AUTOfoco_fica_INTACTO(monkeypatch):
+    """`cam_foco = 0` não pode virar "foco no infinito".
+
+    É o lado que uma implementação ingênua erra em silêncio: mandando o valor
+    sempre, o 0 do padrão desligaria o automático e travaria a lente no
+    extremo — onde a nitidez medida é 501, a pior de toda a varredura.
+    """
+    cv2_falso = Cv2Falso()
+    cam = _camera(monkeypatch, cv2_falso, fps=60, foco=0)
+    try:
+        assert _espera(lambda: cam.read_seq()[0] is not None)
+        props = cv2_falso.abertas[0].props
+        assert "autofoco" not in props and "foco" not in props
     finally:
         cam.stop()
 
