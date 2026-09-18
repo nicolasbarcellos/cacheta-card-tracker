@@ -184,19 +184,23 @@ def test_foco_FIXO_desliga_o_autofoco_e_fixa_o_valor(monkeypatch):
         cam.stop()
 
 
-def test_sem_cam_foco_o_AUTOfoco_fica_INTACTO(monkeypatch):
-    """`cam_foco = 0` não pode virar "foco no infinito".
+def test_sem_cam_foco_o_AUTOfoco_e_RESTAURADO(monkeypatch):
+    """`cam_foco = 0` não pode virar "foco no infinito" NEM herdar o anterior.
 
-    É o lado que uma implementação ingênua erra em silêncio: mandando o valor
-    sempre, o 0 do padrão desligaria o automático e travaria a lente no
-    extremo — onde a nitidez medida é 501, a pior de toda a varredura.
+    Dois erros em um. Mandar o valor sempre travaria a lente no extremo (0 é
+    onde a nitidez medida é 501, a pior da varredura). E simplesmente OMITIR o
+    `set` é igualmente errado: a câmera LEMBRA do último ajuste, então o app
+    abriria herdando em silêncio o foco manual de uma sessão anterior — medido
+    em 18/09 com a exposição, que voltou em 1/128 s num app configurado como
+    automático.
     """
     cv2_falso = Cv2Falso()
     cam = _camera(monkeypatch, cv2_falso, fps=60, foco=0)
     try:
         assert _espera(lambda: cam.read_seq()[0] is not None)
         props = cv2_falso.abertas[0].props
-        assert "autofoco" not in props and "foco" not in props
+        assert props.get("autofoco") == 1, "tinha de RESTAURAR o automático"
+        assert "foco" not in props
     finally:
         cam.stop()
 
@@ -219,7 +223,7 @@ def test_exposicao_FIXA_sai_do_automatico(monkeypatch):
         cam.stop()
 
 
-def test_exposicao_None_NAO_vira_um_SEGUNDO_de_exposicao(monkeypatch):
+def test_exposicao_None_restaura_o_automatico_e_nao_vira_UM_SEGUNDO(monkeypatch):
     """O sentinela é None, não 0 — e a diferença é o dia e a noite.
 
     Nesta escala o valor é log2(segundos), então 0 vale 1 SEGUNDO: um sentinela
@@ -231,7 +235,8 @@ def test_exposicao_None_NAO_vira_um_SEGUNDO_de_exposicao(monkeypatch):
     try:
         assert _espera(lambda: cam.read_seq()[0] is not None)
         props = cv2_falso.abertas[0].props
-        assert "autoexp" not in props and "exp" not in props
+        assert props.get("autoexp") == CameraStream.EXPOSICAO_AUTO,             "a câmera LEMBRA do manual anterior — tem de restaurar"
+        assert "exp" not in props
     finally:
         cam.stop()
 

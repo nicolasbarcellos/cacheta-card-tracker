@@ -100,9 +100,17 @@ class CameraStream:
             # (~95, platô 85-105). Não é exposição: brilho 185 dentro do índice
             # e 0,7% de pixel estourado. Reaferir com `scripts/afina_foco.py`
             # sempre que a câmera ou a distância da mesa mudarem.
+            # A CÂMERA LEMBRA do último ajuste, então "não mexer" NÃO é
+            # devolver ao automático: é herdar em silêncio o que a sessão
+            # anterior deixou. Medido em 2026-09-18 — depois de um teste com
+            # exposição manual, a câmera abriu num app configurado como
+            # automático e continuou em 1/128 s. Por isso o 0 / None aqui
+            # RESTAURA o automático em vez de omitir o `set`.
             if self.foco:
                 cap.set(cv2.CAP_PROP_AUTOFOCUS, 0)
                 cap.set(cv2.CAP_PROP_FOCUS, self.foco)
+            else:
+                cap.set(cv2.CAP_PROP_AUTOFOCUS, 1)
             # EXPOSIÇÃO CURTA CONGELA O MOVIMENTO, e o movimento é o que sobra
             # depois do foco: medido em 18/09, perda de 1,55% com o leque
             # parado contra 17,69% com a mão mexendo. O sentinela é None e não
@@ -111,6 +119,8 @@ class CameraStream:
             if self.exposicao is not None:
                 cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, self.EXPOSICAO_MANUAL)
                 cap.set(cv2.CAP_PROP_EXPOSURE, self.exposicao)
+            else:
+                cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, self.EXPOSICAO_AUTO)
             caixa["cap"] = cap
 
         t = threading.Thread(target=trabalho, daemon=True)

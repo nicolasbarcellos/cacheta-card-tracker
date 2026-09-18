@@ -804,6 +804,53 @@ mutação não prova nada** (a mesma armadilha da âncora do atraso, em 28/08).
 **Regra operacional que vale registrar:** enquanto o app estiver gravando, não abra a câmera em
 outro processo. Medir pelo `/stream/hand` (HTTP) é seguro; `cv2.VideoCapture` não é.
 
+#### MAIS LUZ NO LEQUE: o jeito certo de atacar o borrão de movimento (2026-09-18)
+
+A conclusão que a exposição fixa apontou, testada em seguida: **iluminar o leque** em vez de forçar
+o tempo curto no driver. Aí a exposição automática escolhe o tempo curto sozinha, e sem o custo que
+a manual cobrava no leque parado.
+
+Mesma mesa, mesmo foco (95), mesma exposição (automática), ~6 min de jogo em cada:
+
+| nitidez no leque | parado | leve | mexendo |
+|---|---|---|---|
+| luz de antes | 3.335 | 1.902 | 1.192 |
+| **mais luz no leque** | **4.126** | **3.496** | **2.713** |
+
++24%, +84% e **+127%**. É de longe o maior movimento de nitidez já medido — e some com o borrão de
+movimento, que era o fator de 11× que sobrou depois do foco.
+
+**Na perda de detecção das cartas DA MÃO** (separando as vagas transientes, que são carta entrando
+e saindo do leque):
+
+| perda de detecção | parado | leve | mexendo | total |
+|---|---|---|---|---|
+| luz de antes | 1,42% | 4,71% | **17,22%** | 3,56% |
+| **mais luz** | 2,15% | **3,04%** | **7,06%** | **2,45%** |
+
+Com a mão mexendo, **−59%**; no total, **−31%**. O "parado" anda para o outro lado (+0,7 ponto) e
+está dominado por UMA carta na ponta do leque (`KC`, 15,2% de perda, 47% de toda a perda da
+gravação) — é a fraqueza de ponta/índice deitado de sempre, não a luz.
+
+**A hipótese de custo foi medida e REFUTADA: a mesa não vira carta.** A suspeita era que a luz
+forte fizesse o modelo ler as cartas IMPRESSAS no feltro do estúdio. Nos trechos ociosos: **0
+detecções em 14.661 frames** com a luz nova, e 4 em 14.421 com a luz de antes. (A gravação de 16:25
+parece ter 13,5%, mas ali havia cartas DE VERDADE largadas na mesa, lidas a 0,81-0,91.) Os
+negativos de 20/08 seguram este cenário — nenhuma extração nova foi feita, e fazer teria sido
+trabalho contra defeito inexistente.
+
+**Ressalva:** é um par de gravações, com mãos diferentes. O que sustenta a conclusão é a nitidez
+(grandeza física, medida na mesma faixa de agitação) mais a queda da perda na faixa que o mecanismo
+ataca. O "parado" fica em aberto.
+
+**Armadilha operacional desta sessão, e ela contaminou três medições antes de eu notar:** o app
+CONTINUOU gravando depois do `Ctrl+C` — o arquivo de 16:48 tinha 3.757 frames quando medi e 20.084
+no fim, e o de 15:50 foi de 8.100 a 23.891. Sinal de alerta: a linha do tempo de atividade mostra o
+jogo nos primeiros minutos e o resto vazio. **Meça sempre depois de conferir que o processo morreu**
+(`Get-CimInstance Win32_Process -Filter "name='python.exe'"`), e note que o `python.exe` do venv é
+um lançador: o app roda no processo FILHO. Eventos de console (`CTRL_C`/`CTRL_BREAK`) mandados de
+outro processo NÃO o encerram — testados os dois, nas duas formas de grupo.
+
 ## Comandos
 
 ```powershell
