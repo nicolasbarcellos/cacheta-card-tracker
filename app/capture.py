@@ -12,14 +12,19 @@ class CameraStream:
     """
 
     RETRY_SECONDS = 2.0
+    # DirectShow: 0,25 = manual, 0,75 = automática. A EXPOSIÇÃO em si vem em
+    # log2(segundos) — -7 é 1/128 s.
+    EXPOSICAO_MANUAL = 0.25
+    EXPOSICAO_AUTO = 0.75
 
     def __init__(self, index: int, width: int, height: int, fps: int = 0,
-                 foco: int = 0):
+                 foco: int = 0, exposicao: int | None = None):
         self.index = index
         self.width = width
         self.height = height
         self.fps = fps                 # 0 = aceita o padrão do driver
         self.foco = foco               # 0 = deixa o AUTOfoco decidir
+        self.exposicao = exposicao     # None = deixa a exposição automática
         self.fps_negociado = 0.0       # o que a câmera respondeu de verdade
         self.foco_negociado = -1.0     # idem para o foco
         self.cap = None
@@ -98,6 +103,14 @@ class CameraStream:
             if self.foco:
                 cap.set(cv2.CAP_PROP_AUTOFOCUS, 0)
                 cap.set(cv2.CAP_PROP_FOCUS, self.foco)
+            # EXPOSIÇÃO CURTA CONGELA O MOVIMENTO, e o movimento é o que sobra
+            # depois do foco: medido em 18/09, perda de 1,55% com o leque
+            # parado contra 17,69% com a mão mexendo. O sentinela é None e não
+            # 0 de propósito — nesta escala 0 vale 1 SEGUNDO de exposição, que
+            # é o extremo oposto do que se quer.
+            if self.exposicao is not None:
+                cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, self.EXPOSICAO_MANUAL)
+                cap.set(cv2.CAP_PROP_EXPOSURE, self.exposicao)
             caixa["cap"] = cap
 
         t = threading.Thread(target=trabalho, daemon=True)
@@ -139,6 +152,10 @@ class CameraStream:
         self.fps_negociado = float(self.cap.get(cv2.CAP_PROP_FPS) or 0.0)
         pedido = f" (pedimos {self.fps})" if self.fps else ""
         foco = ""
+        if self.exposicao is not None:
+            foco += (f" | exposição 1/{2 ** -self.exposicao:g}s"
+                     if self.exposicao < 0 else
+                     f" | exposição {self.exposicao}")
         if self.foco:
             self.foco_negociado = float(self.cap.get(cv2.CAP_PROP_FOCUS))
             foco = (f" | foco FIXO {self.foco_negociado:g}"

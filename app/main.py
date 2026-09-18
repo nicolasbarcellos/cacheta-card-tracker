@@ -223,7 +223,8 @@ def main():
         "hand": CameraStream(config.hand_cam_index,
                              config.frame_width, config.frame_height,
                              fps=config.cam_fps,
-                             foco=config.cam_foco),
+                             foco=config.cam_foco,
+                             exposicao=config.cam_exposicao),
     }
     detector = CardDetector(config.model_path, config.min_confidence,
                             imgsz=config.detect_imgsz,

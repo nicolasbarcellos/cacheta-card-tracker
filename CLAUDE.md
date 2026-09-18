@@ -753,6 +753,57 @@ SEQUENCIALMENTE, que é o que os scripts de medição fazem.
 caminhos independentes (a varredura de foco e o A/B), mas a regra do repositório — exigir ganho em
 duas gravações — só estará cumprida na próxima partida.
 
+#### Exposição curta: o mecanismo é REAL e o saldo NÃO paga (2026-09-18)
+
+Feita na mesma sessão, logo depois de travar o foco, porque o que sobrou de perda é **borrão de
+MOVIMENTO** (parado 1,55%, mexendo 17,69% — 11×). Exposição curta congela movimento; a ideia tinha
+sido refutada em 17/09, mas na SALA ESCURA, onde 1/128 s só escurecia. Com luz de estúdio a conta
+muda — e mesmo assim não fecha.
+
+**A varredura, com o leque EM MOVIMENTO** (nitidez do Laplaciano no leque, a 1280): automática
+2.823 · 1/64 s **4.104** · 1/128 s **4.481** · 1/256 s 4.041 · 1/512 s 2.940. Parecia ganho de 59%.
+
+**E a gravação de 3,1 min desmentiu o saldo**, porque a varredura só mediu o caso em movimento:
+
+| nitidez no leque | parado | leve | mexendo |
+|---|---|---|---|
+| automática | **3.335** | 1.902 | 1.192 |
+| 1/128 s | 2.862 | **2.275** | **1.567** |
+
+Ela ganha 20-31% COM movimento e **perde 14% com o leque parado** — ali não há borrão para congelar
+e sobra só o custo de entrar menos luz. A perda de detecção segue o mesmo desenho (parado 1,37% →
+1,89%, mexendo 17,19% → 14,34%), e como o jogador fica **parado ~58% do tempo e mexendo ~7%**, o
+global PIORA (3,48% → 3,79%) e o excesso na tela sobe de 0,3% para 3,6%.
+
+**Não foi publicado** (`cam_exposicao = None`), pela mesma regra que manteve o `MERGE_FACTOR`
+quadrado em 25/08: mudar comportamento sem ganho medido é risco puro. O botão fica no `config.py`,
+com os números.
+
+**Quando voltar a isto:** a penalidade do "parado" é falta de luz, não da ideia. Com o leque **mais
+iluminado**, a exposição automática escolhe sozinha um tempo curto e não se paga nada — é por aí
+que se ataca o borrão de movimento, não por este parâmetro. Valor fixo é amarrado à luz DAQUELE
+lugar e, com pouca luz, cega o modelo em silêncio.
+
+**Armadilha de medição, e é a mesma de sempre:** a varredura mediu só a condição que a mudança
+ataca (leque em movimento) e por isso aprovou; quem decidiu foi a gravação inteira, que contém as
+duas condições. É o mesmo padrão da triagem sintética que aprovou o `imgsz` 1600 em 17/09.
+
+#### A thread do vídeo morta travava o app inteiro
+
+Descoberto do jeito difícil: abri a câmera num script de medição **com o app gravando**, e dois
+processos não dividem a mesma câmera. A thread de escrita do vídeo caiu, a fila (30) encheu, o
+`frame()` ficou preso no `put` — o laço de visão parou de vez, o `mao.avi` ficou com **0 byte** e
+nem o `Ctrl+C` encerrava, porque o `close()` espera na MESMA fila.
+
+Bloquear quando o DISCO não acompanha continua sendo a escolha do projeto. Travar por thread MORTA
+não é: agora o `frame()` desiste do vídeo e avisa, e o `close()` tem prazo na fila. Guardado por
+`tests/test_recorder_trava.py`, com as duas mutações conferidas — e os testes rodam o trabalho numa
+thread com `join(timeout)` de propósito, porque o defeito é uma TRAVA e **teste que trava sob
+mutação não prova nada** (a mesma armadilha da âncora do atraso, em 28/08).
+
+**Regra operacional que vale registrar:** enquanto o app estiver gravando, não abra a câmera em
+outro processo. Medir pelo `/stream/hand` (HTTP) é seguro; `cv2.VideoCapture` não é.
+
 ## Comandos
 
 ```powershell

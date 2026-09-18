@@ -103,7 +103,22 @@ class SessionRecorder:
         if self._gravar_video and imagem is not None:
             v = self._video_i
             self._video_i += 1
-            self._fila.put(imagem)      # bloqueia se o disco não acompanhar
+            # Bloquear é ESCOLHA: disco lento tem de aparecer no FPS, não
+            # dessincronizar o vídeo do JSONL em silêncio. Mas isso vale para a
+            # thread VIVA e lenta — se ela morrer, a fila enche e o laço de
+            # visão para para sempre, e nem o Ctrl+C sai, porque o `close()`
+            # também espera na mesma fila. Foi o que aconteceu em 2026-09-18
+            # (a câmera foi aberta por outro processo, a thread caiu e o app
+            # ficou preso com um `mao.avi` de 0 byte).
+            if self._thread is not None and not self._thread.is_alive():
+                self._gravar_video = False
+                v = -1
+                self._video_i -= 1
+                print("gravação: a thread do vídeo MORREU — seguindo só com "
+                      "as detecções (o vídeo desta sessão está incompleto)",
+                      flush=True)
+            else:
+                self._fila.put(imagem)  # bloqueia se o disco não acompanhar
         self._escreve({
             "t": "frame",
             "i": i,
@@ -133,8 +148,15 @@ class SessionRecorder:
         if self._fechado:
             return
         self._fechado = True
-        if self._thread is not None:
-            self._fila.put(None)
+        if self._thread is not None and self._thread.is_alive():
+            # com a thread morta, este `put` encheria a fila e travaria o
+            # encerramento — o `timeout` é a segunda guarda do mesmo defeito
+            try:
+                self._fila.put(None, timeout=10)
+            except queue.Full:
+                print("gravação: a fila do vídeo não escoou — o índice do AVI "
+                      "vai sair incompleto (leia o vídeo SEQUENCIALMENTE)",
+                      flush=True)
             self._thread.join(timeout=30)
         self._jsonl.close()
         print(f"gravação salva em {self.dir} "

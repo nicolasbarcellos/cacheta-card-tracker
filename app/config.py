@@ -42,6 +42,26 @@ class Config:
     # REAFIRA ao mudar a câmera de lugar, a mesa de altura ou o modelo de
     # webcam: o valor é da DISTÂNCIA, não do produto.
     cam_foco: int = 95
+    # EXPOSIÇÃO fixa da câmera, em log2(segundos): -7 = 1/128 s.
+    # FICA EM None (automático) — a exposição fixa foi MEDIDA ao vivo em
+    # 2026-09-18 e o saldo não paga.
+    # O mecanismo é real e foi confirmado: exposição curta congela o
+    # movimento. Nitidez no leque (Laplaciano a 1280), automática -> 1/128 s,
+    # nas MESMAS condições: parado 3.335 -> 2.862, leve 1.902 -> 2.275,
+    # mexendo 1.192 -> 1.567. Ou seja, ela ganha de 20% a 31% COM movimento e
+    # PERDE 14% com o leque parado, porque ali não há borrão para congelar e
+    # sobra só o custo de entrar menos luz.
+    # A perda de detecção segue o mesmo desenho (parado 1,37% -> 1,89%,
+    # mexendo 17,19% -> 14,34%), e como o jogador fica parado ~58% do tempo e
+    # mexendo ~7%, o global PIORA (3,48% -> 3,79%) e o excesso na tela sobe de
+    # 0,3% para 3,6%.
+    # QUANDO VOLTAR A ISTO: a penalidade do "parado" é falta de luz, não da
+    # ideia. Com o leque MAIS ILUMINADO, a exposição automática já escolhe um
+    # tempo curto sozinha e não se paga nada — é por aí que se ataca o borrão
+    # de movimento, não por este parâmetro. E cuidado: valor fixo é amarrado à
+    # luz DAQUELE lugar; com pouca luz ele cega o modelo em silêncio (foi o
+    # que 17/09 mediu na sala escura).
+    cam_exposicao: int | None = None
     detect_imgsz: int = 1280  # resolução da inferência (cantos são pequenos)
     model_path: str = "models/cards.pt"
     min_confidence: float = 0.30  # baixo de propósito: a votação temporal

@@ -103,6 +103,8 @@ class Cv2Falso:
     CAP_PROP_FPS = "fps"
     CAP_PROP_AUTOFOCUS = "autofoco"
     CAP_PROP_FOCUS = "foco"
+    CAP_PROP_AUTO_EXPOSURE = "autoexp"
+    CAP_PROP_EXPOSURE = "exp"
 
     def __init__(self, falha_com_fps=False):
         self.falha_com_fps = falha_com_fps
@@ -195,6 +197,41 @@ def test_sem_cam_foco_o_AUTOfoco_fica_INTACTO(monkeypatch):
         assert _espera(lambda: cam.read_seq()[0] is not None)
         props = cv2_falso.abertas[0].props
         assert "autofoco" not in props and "foco" not in props
+    finally:
+        cam.stop()
+
+
+def test_exposicao_FIXA_sai_do_automatico(monkeypatch):
+    """Exposição curta congela o movimento, que é o que sobra depois do foco.
+
+    Medido em 18/09: perda de 1,55% com o leque parado contra 17,69% com a mão
+    mexendo. Mandar o tempo sem tirar a câmera do automático não segura nada —
+    o driver recalcula no quadro seguinte.
+    """
+    cv2_falso = Cv2Falso()
+    cam = _camera(monkeypatch, cv2_falso, fps=60, exposicao=-7)
+    try:
+        assert _espera(lambda: cam.read_seq()[0] is not None)
+        props = cv2_falso.abertas[0].props
+        assert props.get("autoexp") == CameraStream.EXPOSICAO_MANUAL
+        assert props.get("exp") == -7
+    finally:
+        cam.stop()
+
+
+def test_exposicao_None_NAO_vira_um_SEGUNDO_de_exposicao(monkeypatch):
+    """O sentinela é None, não 0 — e a diferença é o dia e a noite.
+
+    Nesta escala o valor é log2(segundos), então 0 vale 1 SEGUNDO: um sentinela
+    0 tratado como valor daria a exposição mais LONGA possível, o extremo
+    oposto do que a medição pediu, e ainda por cima em silêncio.
+    """
+    cv2_falso = Cv2Falso()
+    cam = _camera(monkeypatch, cv2_falso, fps=60, exposicao=None)
+    try:
+        assert _espera(lambda: cam.read_seq()[0] is not None)
+        props = cv2_falso.abertas[0].props
+        assert "autoexp" not in props and "exp" not in props
     finally:
         cam.stop()
 
