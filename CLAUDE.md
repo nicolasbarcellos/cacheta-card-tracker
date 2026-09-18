@@ -851,6 +851,30 @@ jogo nos primeiros minutos e o resto vazio. **Meça sempre depois de conferir qu
 um lançador: o app roda no processo FILHO. Eventos de console (`CTRL_C`/`CTRL_BREAK`) mandados de
 outro processo NÃO o encerram — testados os dois, nas duas formas de grupo.
 
+#### As seis gravações de 2026-09-18, e o que cada uma vale
+
+Todas no estúdio, mesma mesa verde e mesmo baralho. O `meta.json` guarda foco e exposição; **a LUZ
+não fica registrada em lugar nenhum**, por isso esta tabela.
+
+| gravação | foco | exposição | luz | serve para |
+|---|---|---|---|---|
+| `143921` | auto | auto | de antes | teste de desligamento; vídeo com índice quebrado |
+| `144344` | **auto** | auto | de antes | **o "antes" do foco** — perda 15,18% |
+| `155050` | **95** | auto | de antes | **o "depois" do foco** — perda 3,75%; e o "antes" da luz |
+| `161417` | 95 | **−7** | de antes | CONTAMINADA (abri a câmera por fora); `mao.avi` com 0 byte |
+| `162550` | 95 | **−7** | de antes | **o teste da exposição fixa** — ~1,5 min de jogo só |
+| `164241` | 95 | −7 | **mais luz** | INÚTIL: a câmera engasgou, 1 fps, nenhuma carta |
+| `164804` | 95 | auto | **mais luz** | **o "depois" da luz** — perda 2,45% nas cartas da mão |
+
+**Os pares que valem como A/B são `144344 × 155050` (foco) e `155050 × 164804` (luz).** As duas
+comparações têm a ressalva de serem UM par cada, com mãos diferentes — o que as sustenta é a
+nitidez, que é grandeza física medida na mesma faixa de agitação.
+
+**Cuidado ao usar qualquer uma delas:** o app continuou gravando depois que o jogo acabou, então
+cada arquivo tem 8-14 minutos de mesa vazia no fim. Isso não atrapalha a perda (sem carta não há
+vaga), mas afunda a *atividade* e muda o denominador da *cobertura*. A linha do tempo de atividade
+mostra o corte na hora.
+
 ## Comandos
 
 ```powershell
