@@ -875,6 +875,90 @@ cada arquivo tem 8-14 minutos de mesa vazia no fim. Isso não atrapalha a perda 
 vaga), mas afunda a *atividade* e muda o denominador da *cobertura*. A linha do tempo de atividade
 mostra o corte na hora.
 
+### A gravação de 2026-09-24: o ENQUADRAMENTO custou a medição, e agora tem instrumento
+
+Gravação de 5 min feita para ser a SEGUNDA gravação que confirma o ganho da luz de 18/09 — a
+ressalva que aquela sessão deixou aberta ("é UM par de gravações"). **Ela não serviu para isso**, e
+o motivo não é a luz: o leque ficou mais LONGE da câmera.
+
+| | 18/09 luz antes | 18/09 mais luz | **24/09** |
+|---|---|---|---|
+| atraso | 0,92 s | 0,90 s | **0,89 s** |
+| contradição | 9,3% | 9,4% | 10,9% |
+| excesso (leitor vivo) | 0,3% (0,1%) | 1,6% (1,3%) | 7,7% (3,8%) |
+| ordem errada | 0,0% | 0,0% | 0,5% |
+| vaivém | 4 | 0 | 16 |
+| cobertura | 99,6% | 99,5% | 99,0% |
+| **atividade** | 38,3% | 40,4% | **89,9%** |
+| **perda de detecção** | **3,48%** | **3,19%** | **5,53%** |
+
+As três medidas com o código de hoje. A gravação de 24/09 é a de **jogo mais real do projeto** —
+89,9% dos frames com carta no quadro, contra 38-40% das de 18/09, que ficaram minutos com a mesa
+vazia. Isso sozinho infla excesso e vaivém e torna a comparação de TELA fraca; quem decide é a
+perda.
+
+**O defeito, e ele é físico:** o índice chegou ao modelo com 97 px de altura (área mediana 6.916 a
+1280) contra 105 px (9.055) e 127 px (11.940) das duas de 18/09 — **24% a 42% menor**. A perda cai
+fortemente com o tamanho, medido DENTRO de cada gravação, que é o controle que separa "o leque
+estava longe" de "a imagem estava pior":
+
+| altura do índice a 1280 | 24/09 | 18/09 mais luz | 18/09 luz antes |
+|---|---|---|---|
+| < 80 px | 11,60% (**22,8%** do leque) | 7,35% (14,7%) | 19,43% (1,4%) |
+| 80-100 | 5,38% (39,8%) | 1,52% (19,7%) | 8,73% (10,2%) |
+| 100-120 | 1,90% (37,2%) | 1,04% (51,0%) | 3,18% (22,7%) |
+| >= 120 | amostra fina | 8,78% (14,7%) | 2,42% (**65,8%**) |
+
+**Abaixo de 100 px a perda cresce nas TRÊS**, e é a parte firme. Acima de 120 o dado é ambíguo
+(8,78% numa, 2,42% na outra) e o modelo é preso à escala — por isso o alvo é uma FAIXA, não um
+piso.
+
+**O instrumento que faltava:** `scripts/confere_enquadramento.py`, com o núcleo testado em
+`app/enquadramento.py`. Ele é o irmão do `afina_foco.py` e a divisão é clara — aquele acha o foco
+da DISTÂNCIA, este confere se a distância é a certa. **Rode os dois, nessa ordem, antes de
+gravar.** Foi exatamente o passo que faltou em 24/09: eu conferi o foco e a nitidez e não conferi o
+tamanho do índice, que é o primeiro item que este arquivo manda checar desde "Enquadramento é
+metade do resultado".
+
+**O que NÃO explica a gravação de 24/09** (tudo medido no mesmo dia, não repetir):
+
+| hipótese | veredito |
+|---|---|
+| foco errado para a distância | **falso** — nitidez no leque parado **3.990**, empata com a melhor do projeto |
+| a luz não estava ligada | **falso** — nitidez com movimento 3.017/2.232, muito acima dos 2.384/1.689 da luz antiga |
+| o leque chegou mais deitado | **falso, e ao contrário** — 52,2% em pé contra 43,9% e 46,7% |
+| classe errada contando como miss | **falso** — 12,9% da perda, igual aos 13,2% de 18/09 16:48 |
+| atribuição por rótulo no meu script | **falso** — refeito pela IDENTIDADE da vaga, deu 1,68% contra 1,61% |
+
+**O que sobra, e fica ABERTO:** controlando tamanho **e** rotação ao mesmo tempo (só índice em pé,
+faixa 100-120 px, a única em que as três se sobrepõem), 24/09 perde **1,68%** contra **0,02% e
+0,07%**. Nem tamanho, nem rotação, nem nitidez, nem agitação (a mistura de 24/09 é quase a de
+15:50), nem classe errada explicam isso. O modo dominante da perda de 24/09 é **classe certa
+abaixo do limiar** (38,9%, contra 30,1% de 28/08), que é a assinatura de índice pequeno — mas a
+célula casada diz que não é só tamanho.
+
+**O VAIVÉM de 16 não é regressão, e olhar o vídeo resolveu em dois frames.** Catorze dos 16 não são
+troca de par: são **6 posições mudando de uma vez**, em duas rajadas, e sempre o mesmo
+movimento — `8D 9D 10D [9C] 7D 7H 7S 3H 5D` ⟷ `8D 9D 10D 7D 7H 7S 3H 5D [9C]`, dez vezes em 5,5 s.
+No vídeo, o jogador está **tirando o 9♣ do meio do leque e encaixando-o na ponta direita** (e ele
+acaba de cabeça para baixo). A tela alterna entre a vaga velha, que leva `fan_expire` ~1,6 s para
+morrer, e a nova. É a família "carta tirada do leque e recolocada" que este arquivo registra como
+ABERTA desde 19/08 — **não** é o empate de x de 26/08, e a histerese de ordem não tem o que fazer
+ali (as duas vagas estão a centenas de px uma da outra).
+
+**A MX Brio saiu do USB durante a sessão**, depois da gravação. O Windows passou a enxergar só a
+webcam interna, o índice 0 virou ela e a câmera passou a abrir em **1280x720 com o foco em -1**
+(pedindo 95). A gravação não foi afetada — o log dela diz `aberta 1920x1080 | foco FIXO 95` — mas
+**a falha é silenciosa** e valeria a sessão seguinte inteira. O `confere_enquadramento.py` avisa
+nos dois casos (foco que não pegou, resolução diferente da pedida), e pegou este na primeira
+execução. Lição operacional: **o pedido de foco NÃO é garantido**, e foco no automático vale 15,18%
+de perda contra 3,75%.
+
+`slots_debug` passou a expor o **`seq` da vaga** (a identidade), porque quem mede precisa
+acompanhar UMA vaga entre frames e por rótulo não dá — o rótulo repete (gêmeas dos dois baralhos) e
+troca de vaga quando a mão muda. Guardado por `test_slots_debug_expoe_a_IDENTIDADE_da_vaga`,
+conferido por mutação nas duas direções (ids colidindo e id que muda a cada frame).
+
 ## Comandos
 
 ```powershell
@@ -895,10 +979,23 @@ python -m pytest                      # suíte completa (rápida: só código pu
 python -m pytest tests/test_hand_reader.py::test_carta_duplicada_e_FRACA_nao_entra_na_mao
 ```
 
-`scripts/afina_foco.py` acha o FOCO fixo da câmera (não abre janela; segure o leque parado na
-posição de jogo, com o app FECHADO). O autofoco mira o feltro, que preenche o quadro, e não o
-leque, que fica mais perto — medido em 18/09: perda de detecção **15,18% → 3,75%** só com o foco
+**ANTES DE GRAVAR, rode os dois, nesta ordem** (nenhum abre janela; os dois pedem o app FECHADO e
+o leque parado na posição de jogo):
+
+```powershell
+python scripts/afina_foco.py              # 1. o FOCO da distância
+python scripts/confere_enquadramento.py   # 2. a distância está certa?
+```
+
+`afina_foco.py` acha o FOCO fixo da câmera. O autofoco mira o feltro, que preenche o quadro, e não
+o leque, que fica mais perto — medido em 18/09: perda de detecção **15,18% → 3,75%** só com o foco
 travado. Reafira ao mudar a câmera de lugar ou a altura da mesa.
+
+`confere_enquadramento.py` mede a ALTURA do índice na escala do modelo e reprova fora de
+100-130 px. Existe porque essa conferência faltou em 24/09 e **custou uma gravação inteira**: foco
+certo, nitidez a melhor do projeto, e o índice 24-42% menor que o de 18/09 — perda 5,53% contra
+3,19%. Ele também avisa quando o **foco pedido não pegou** ou a câmera abriu noutra resolução; as
+duas coisas são falhas silenciosas e a segunda pegou a MX Brio fora do USB na primeira execução.
 
 Diagnóstico de câmera/modelo (todos abrem janela do OpenCV, `q` encerra):
 `scripts/check_cams.py` (índices/enquadramento) · `training/aim.py` (mirar) ·
