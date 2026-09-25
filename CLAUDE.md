@@ -1007,6 +1007,25 @@ própria thread a cada 15 capturas (`exposicao_lida`), o gravador escreve um reg
 `{"t": "camera", "exposicao": ...}` só quando ele MUDA, e o `mede_leitura.py` publica a fração do
 tempo em cada valor. Todo leitor do `sessao.jsonl` já filtra por `t`, então o replay não muda.
 
+**A terceira gravação do dia (`20260925-154721`, 2,6 min) repete a segunda, e a exposição sai
+fora da explicação.** Índice ainda maior (123 px p50, só 6% abaixo de 100), nitidez parada 4.506 no
+`confere_enquadramento.py`, e a câmera em **1/64 s em 100% dos frames** — primeira gravação com o
+registro novo.
+
+| perda — cartas da MÃO | parado | leve | mexendo | total |
+|---|---|---|---|---|
+| 18/09 mais luz | 2,15% | 3,04% | 7,06% | 2,45% |
+| 25/09 15:09 | 2,33% | 5,69% | 25,53% | 5,97% |
+| **25/09 15:47** | **2,29%** | **5,29%** | **18,87%** | **5,28%** |
+
+Agitação "leve" de novo casada (p50 0,033 × 0,032). Duas gravações de hoje concordam entre si e
+discordam de 18/09: **quem está fora da curva é 18/09**, não hoje. O índice EM PÉ perde 5,0% hoje
+contra 0,5% em 18/09, também nas duas — uma diferença sistemática que nem luz, nem foco, nem
+tamanho, nem exposição (ao menos a de hoje) explicam. A exposição de 18/09 não foi gravada, então
+continua possível que ela tenha sido mais curta lá; é a única variável física que ainda não se
+pode descartar. A perda por carta está espalhada (nenhuma carta responde pela diferença), e a
+agitação mediana GERAL dobrou (0,012 → 0,025): o jeito de segurar o leque hoje foi outro.
+
 **Achado de brinde na sonda:** com a lente coberta a exposição foi a 1/16 s e a câmera caiu de
 ~30 para **~20 quadros/s**. É o mecanismo "pouca luz derruba o fps" que 16/09 supunha, visto
 direto — e todo parâmetro do pipeline é contado em quadros.
