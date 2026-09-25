@@ -1026,6 +1026,11 @@ continua possível que ela tenha sido mais curta lá; é a única variável fís
 pode descartar. A perda por carta está espalhada (nenhuma carta responde pela diferença), e a
 agitação mediana GERAL dobrou (0,012 → 0,025): o jeito de segurar o leque hoje foi outro.
 
+A contradição dela (**36,7%**, a maior já medida) NÃO é defeito: o 9♥ e o 2♥ se revezando na mesma
+posição da tela era o usuário **trocando as duas cartas de propósito** (confirmado por ele), e a mão
+exibida mudou 35 vezes em 157 s. Cada troca cobra o `lock_frames` (~0,7 s) de carta visível e ainda
+fora da tela. Não compare essa contradição com a de partidas de ritmo normal.
+
 **Achado de brinde na sonda:** com a lente coberta a exposição foi a 1/16 s e a câmera caiu de
 ~30 para **~20 quadros/s**. É o mecanismo "pouca luz derruba o fps" que 16/09 supunha, visto
 direto — e todo parâmetro do pipeline é contado em quadros.
