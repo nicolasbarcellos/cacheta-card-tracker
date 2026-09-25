@@ -1038,6 +1038,67 @@ direto — e todo parâmetro do pipeline é contado em quadros.
 "Mexendo" não compara: hoje o movimento foi muito mais forte (p90 da agitação 1,00 contra 0,22) e a
 mão ficou parada 40% do tempo contra 73%. É isso que leva a contradição a 23,7% e o global a 8,22%.
 
+### Retreino de 2026-09-25: o gabarito saiu do VÍDEO, sem o usuário ditar nada
+
+**O modelo em produção mudou: `cards.pt` é o `ab-2509`.** Rollback:
+`copy models\cards_backup_15.pt models\cards.pt`.
+
+A quarta gravação do dia (`20260925-162535`, 1,9 min, **dois baralhos**) mostrou o 5♦↔3♦ de volta:
+com as duas cartas coladas, o modelo entregava dois 3♦ em 46% dos frames e dois 5♦ em 22%, e a tela
+exibiu `3D 3D` e `5D 5D` onde havia um de cada. Olhando o vídeo apareceram mais dois erros: o 9♥
+**muito deitado** na ponta direita lido como `2H` a 0,80-0,93 (primeiro achei que a carta estava de
+cabeça para baixo — não estava; carta comum mostra o MESMO índice em pé invertida) e o 6♥ na ponta
+lido como `5H`.
+
+**O que é novo aqui é o método.** O `--mao-fixa` de 17/09 pedia a mão ditada pelo usuário. Desta
+vez a partida foi JOGADA (20 jogadas) e o gabarito foi montado olhando o vídeo trecho a trecho: um
+recorte do leque no meio de cada mão exibida, a mão verdadeira lida a olho, e o instante das trocas
+difíceis cravado pelas detecções (o 4♥ → 5♦ da ponta esquerda, em 98,6 s → 99,8 s). A tela errava
+exatamente nos trechos que interessavam, então o gabarito NÃO pode sair dela. Está versionado em
+`gravacoes/20260925-162535/gabarito_corrigido.json`, com a mão inicial:
+
+```powershell
+python training/extrai_gravacao.py gravacoes/20260925-162535 `
+    --mao-inicial "4S 5D 3D KS 4C 6C 9H 9C 2D" --por-segmento 120 --intervalo 0.3
+```
+
+86 frames, 52 correções (3D→5D 32, 2H→9H 8). As 43 caixas em que o rótulo discorda do modelo foram
+auditadas na folha de contato, **todas certas**. E a folha mostrou o mecanismo: em quase todo 5♦
+lido como 3♦, o "3" da carta VIZINHA invade o canto superior direito da caixa — a mesma família da
+caixa que incha do 9♠ (26/08).
+
+Mesma receita do `ab-5d` (12 épocas, 1280, batch 3, freeze 10), 3.146 imagens com 41% real, e os
+mesmos holdouts: `20260811-211614`, `20260819-162252-dificeis` e `20260917-174349` (a tomada 2 do
+5♦). Os dois modelos lendo o MESMO vídeo, nas três gravações fora do treino:
+
+| | tomada 2 17/09 | 25/09 15:47 | 25/09 15:09 |
+|---|---|---|---|
+| **contradição** | 8,9% → **6,8%** | 34,7% → **27,1%** | 22,7% → **17,4%** |
+| excesso | 1,3% → 1,3% | 4,1% → 4,9% | 9,2% → 9,4% |
+| ordem errada | 0,3% → 0,3% | 0,0% → 0,4% | 0,6% → **2,5%** |
+| vaivém | 4 → 2 | 2 → 2 | 8 → **18** |
+| perda de detecção | 4,47% → 3,94% | 7,70% → 8,14% | 9,03% → 8,73% |
+| cobertura | 96,7% → 96,7% | 99,2% → 99,2% | 98,3% → 97,8% |
+
+Na tomada 2, os frames com **três ou mais 3♦** (a mão tem dois) caem de 6,0% para **3,2%**; o 5♦
+sumindo fica em 3,1% → 3,5% (ruído). Sem regressão onde já se media: classe 99,5% → 99,5% no
+holdout real de 11/08, 98,7% → 98,8% no `holdout-ranks` (naipe na mesma cor 10 → 9), cartas
+inventadas 0 → 0.
+
+**A contradição cai nas três, de 2 a 8 pontos, muito acima do piso de ~1 ponto** — é o critério das
+duas gravações, cumprido com folga. A perda anda nos dois sentidos, dentro do ruído.
+
+**O custo, e ele é real:** na gravação das 15:09 a ordem errada vai de 0,6% a 2,5% e o vaivém dobra.
+São 49 frames (~1,7 s) em rajadas curtas, todas nos momentos em que o usuário REARRANJAVA os setes e
+o 9♦/10♦ no leque — a gravação mais agitada do dia. No trecho mais longo (48 s), o modelo antigo nem
+entrava na conta porque mostrava o conjunto errado (sem o 5♥). Trocar ~5 pontos de contradição por
+~2 de ordem nessa gravação foi julgado bom negócio; se o vaivém incomodar ao vivo, é aqui que olhar.
+
+**O conserto é parcial, e o frame de treino mostra isso.** Num frame que ENTROU no treino, re-lido
+do vídeo, os dois modelos ainda dão `4C` no 4♠ e `3D` no 5♦ — ao vivo, do quadro cru da câmera, o
+mesmo instante tinha saído certo. É a compressão MJPG (ver "`--redetectar` NÃO é comparável"), e é
+também um lembrete de que o dado real de treino vem desse vídeo degradado.
+
 ## Comandos
 
 ```powershell

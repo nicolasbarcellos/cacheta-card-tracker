@@ -1,0 +1,147 @@
+{
+  "revisados": 20,
+  "total_eventos": 20,
+  "jogadas": [
+    {
+      "tipo": "draw",
+      "carta": "AS",
+      "ts": 9.501,
+      "i": 133,
+      "conferido_no_video": true
+    },
+    {
+      "tipo": "discard",
+      "carta": "2D",
+      "ts": 13.005,
+      "i": 238,
+      "conferido_no_video": true
+    },
+    {
+      "tipo": "draw",
+      "carta": "4H",
+      "ts": 21.295,
+      "i": 487,
+      "conferido_no_video": true
+    },
+    {
+      "tipo": "discard",
+      "carta": "AS",
+      "ts": 24.088,
+      "i": 571,
+      "conferido_no_video": true
+    },
+    {
+      "tipo": "draw",
+      "carta": "QD",
+      "ts": 26.692,
+      "i": 649,
+      "conferido_no_video": true
+    },
+    {
+      "tipo": "discard",
+      "carta": "9C",
+      "ts": 33.598,
+      "i": 856,
+      "conferido_no_video": true
+    },
+    {
+      "tipo": "draw",
+      "carta": "6H",
+      "ts": 40.298,
+      "i": 1057,
+      "conferido_no_video": true
+    },
+    {
+      "tipo": "discard",
+      "carta": "9H",
+      "ts": 42.483,
+      "i": 1123,
+      "conferido_no_video": true
+    },
+    {
+      "tipo": "draw",
+      "carta": "AH",
+      "ts": 48.693,
+      "i": 1309,
+      "conferido_no_video": true
+    },
+    {
+      "tipo": "discard",
+      "carta": "6H",
+      "ts": 51.285,
+      "i": 1387,
+      "conferido_no_video": true
+    },
+    {
+      "tipo": "draw",
+      "carta": "KC",
+      "ts": 68.305,
+      "i": 1895,
+      "conferido_no_video": true
+    },
+    {
+      "tipo": "discard",
+      "carta": "QD",
+      "ts": 69.291,
+      "i": 1925,
+      "conferido_no_video": true
+    },
+    {
+      "tipo": "draw",
+      "carta": "QC",
+      "ts": 83.601,
+      "i": 2349,
+      "conferido_no_video": true
+    },
+    {
+      "tipo": "discard",
+      "carta": "AH",
+      "ts": 85.211,
+      "i": 2397,
+      "conferido_no_video": true
+    },
+    {
+      "tipo": "draw",
+      "carta": "10H",
+      "ts": 87.99,
+      "i": 2481,
+      "conferido_no_video": true
+    },
+    {
+      "tipo": "discard",
+      "carta": "6C",
+      "ts": 91.094,
+      "i": 2574,
+      "conferido_no_video": true
+    },
+    {
+      "tipo": "draw",
+      "carta": "5D",
+      "ts": 98.625,
+      "i": 2800,
+      "conferido_no_video": true
+    },
+    {
+      "tipo": "discard",
+      "carta": "4H",
+      "ts": 99.841,
+      "i": 2837,
+      "conferido_no_video": true
+    },
+    {
+      "tipo": "draw",
+      "carta": "3H",
+      "ts": 105.704,
+      "i": 3012,
+      "conferido_no_video": true
+    },
+    {
+      "tipo": "discard",
+      "carta": "QC",
+      "ts": 107.798,
+      "i": 3075,
+      "conferido_no_video": true
+    }
+  ],
+  "nota": "montado em 2026-09-25 olhando o VIDEO trecho a trecho (a tela tinha 3D 3D, 5D 5D, 2H e 5H errados); dois baralhos"
+}
