@@ -843,6 +843,9 @@ trabalho contra defeito inexistente.
 (grandeza física, medida na mesma faixa de agitação) mais a queda da perda na faixa que o mecanismo
 ataca. O "parado" fica em aberto.
 
+**A regravação de 25/09, com a MESMA luz, NÃO repetiu o ganho** — ver "A regravação de 2026-09-25".
+Com o leque parado ela empata; com movimento, fica no nível da "luz de antes".
+
 **Armadilha operacional desta sessão, e ela contaminou três medições antes de eu notar:** o app
 CONTINUOU gravando depois do `Ctrl+C` — o arquivo de 16:48 tinha 3.757 frames quando medi e 20.084
 no fim, e o de 15:50 foi de 8.100 a 23.891. Sinal de alerta: a linha do tempo de atividade mostra o
@@ -958,6 +961,47 @@ de perda contra 3,75%.
 acompanhar UMA vaga entre frames e por rótulo não dá — o rótulo repete (gêmeas dos dois baralhos) e
 troca de vaga quando a mão muda. Guardado por `test_slots_debug_expoe_a_IDENTIDADE_da_vaga`,
 conferido por mutação nas duas direções (ids colidindo e id que muda a cada frame).
+
+### A regravação de 2026-09-25: o ganho da LUZ não se repetiu
+
+A segunda gravação que a luz de 18/09 pedia (`20260925-150920`, 3,2 min). Desta vez o preparo foi
+feito inteiro: `afina_foco.py` (pico em 80-90, ficou o 95 de 18/09 para não misturar duas mudanças)
+e `confere_enquadramento.py` (índice a 103 px, OK). **O usuário confirmou que a luz era a mesma** do
+"mais luz" de 18/09, e o brilho medido concorda: leque 176 contra 181, índice 185 contra 196,
+estouro 0,9% contra 2,4%.
+
+| | 18/09 luz antes | 18/09 mais luz | **25/09 mesma luz** |
+|---|---|---|---|
+| perda global | 3,48% | 3,19% | **8,22%** |
+| perda — cartas da MÃO | 3,56% | 2,45% | **5,97%** |
+| mão parado / leve / mexendo | 1,42 / 4,71 / 17,22% | 2,15 / 3,04 / 7,06% | **2,33 / 5,69 / 25,53%** |
+| nitidez parado / leve / mexendo¹ | — | 3.093 / 3.274 / 2.738 | **3.247 / 2.485 / 1.464** |
+| tempo parado / leve / mexendo | — | 73 / 25 / 2% | **40 / 51 / 9%** |
+| altura do índice p50 (< 100 px) | — | 105 px (34%) | **111 px (21%)** |
+
+¹ Nitidez medida pelo script de 16/09, com agitação calculada das próprias caixas. Não é o mesmo
+número da seção "MAIS LUZ NO LEQUE", que usou a agitação do leitor; compare só dentro da coluna.
+
+**O que ficou firme:** parado EMPATA (perda 2,33 × 2,15%, nitidez 3.247 × 3.093). Foco e distância
+estão resolvidos, e o `confere_enquadramento.py` fez o trabalho: o enquadramento é o melhor dos
+quatro.
+
+**O que caiu:** na faixa LEVE a comparação é justa — a agitação mediana é a MESMA (0,033 × 0,032) —
+e mesmo assim a nitidez cai 24% e a perda quase dobra, voltando ao nível da "luz de antes" (4,71%).
+Com a mesma luz e o mesmo brilho, isso não é luz. **O ganho de 18/09 com movimento está, portanto,
+NÃO confirmado**: a mesma luz deu uma vez 3,04% e outra 5,69% na mesma faixa.
+
+**Duas explicações descartadas na hora:** não é rotação (hoje o leque veio MAIS em pé, 51,6% contra
+43,9%, e o índice em pé perdeu 5,19% contra 0,53% — a perda está espalhada por todas as faixas) e
+não é taxa de quadros (~30 fps nas quatro gravações, 0% repetidos).
+
+**Fica ABERTO:** o que torna a mesma agitação mais borrada num dia que no outro. A agitação é
+translação mediana das caixas; ela não vê GIRO de punho nem velocidade DENTRO do intervalo de
+exposição, e a exposição automática escolhida não fica gravada (`meta.json` só guarda o pedido).
+Gravar o valor de exposição que a câmera usou é o que tornaria isto medível.
+
+"Mexendo" não compara: hoje o movimento foi muito mais forte (p90 da agitação 1,00 contra 0,22) e a
+mão ficou parada 40% do tempo contra 73%. É isso que leva a contradição a 23,7% e o global a 8,22%.
 
 ## Comandos
 
