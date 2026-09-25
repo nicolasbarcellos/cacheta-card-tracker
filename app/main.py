@@ -164,6 +164,8 @@ def vision_loop(cams, detector, tracker, annotated, running,
         # o índice vem ANTES do processamento: é ele que amarra a mão e os
         # eventos ao frame exato que os gerou
         i = recorder.frame(dets_hand, frame) if recorder is not None else 0
+        if recorder is not None:
+            recorder.exposicao(i, getattr(cams["hand"], "exposicao_lida", None))
         process_frame(dets_hand, tracker, hand_view, hand_lock,
                       recorder=recorder, i=i)
         fps.tick(True)

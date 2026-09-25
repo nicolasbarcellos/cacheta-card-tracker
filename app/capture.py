@@ -16,6 +16,14 @@ class CameraStream:
     # log2(segundos) — -7 é 1/128 s.
     EXPOSICAO_MANUAL = 0.25
     EXPOSICAO_AUTO = 0.75
+    # A EXPOSIÇÃO QUE A AUTOMÁTICA ESCOLHEU, lida da câmera — não a pedida.
+    # Faltava em 2026-09-25: a mesma luz deu, na MESMA agitação, nitidez 3.274
+    # num dia e 2.485 no outro, e sem este número não havia como saber se a
+    # câmera tinha exposto mais tempo. Sondado na MX Brio no mesmo dia: o
+    # `get` devolve o valor REAL (−6 = 1/64 s com a mesa iluminada, −4 =
+    # 1/16 s com a lente coberta, e volta), em degraus de log2. Lida a cada
+    # tantas capturas, na thread da câmera, para não custar o laço.
+    EXPOSICAO_LE_A_CADA = 15
 
     def __init__(self, index: int, width: int, height: int, fps: int = 0,
                  foco: int = 0, exposicao: int | None = None):
@@ -27,6 +35,7 @@ class CameraStream:
         self.exposicao = exposicao     # None = deixa a exposição automática
         self.fps_negociado = 0.0       # o que a câmera respondeu de verdade
         self.foco_negociado = -1.0     # idem para o foco
+        self.exposicao_lida = None     # a que a câmera está usando AGORA
         self.cap = None
         self._frame = None
         self._seq = 0                  # conta CAPTURAS, não leituras
@@ -199,6 +208,10 @@ class CameraStream:
                 with self._lock:
                     self._frame = frame
                     self._seq += 1
+                    seq = self._seq
+                if seq % self.EXPOSICAO_LE_A_CADA == 1:
+                    self.exposicao_lida = float(
+                        self.cap.get(cv2.CAP_PROP_EXPOSURE))
             else:
                 # A câmera abriu e não entregou o PRIMEIRO frame: o pedido de
                 # taxa é o suspeito, porque é a única coisa nova que mandamos.

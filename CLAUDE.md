@@ -997,8 +997,19 @@ não é taxa de quadros (~30 fps nas quatro gravações, 0% repetidos).
 
 **Fica ABERTO:** o que torna a mesma agitação mais borrada num dia que no outro. A agitação é
 translação mediana das caixas; ela não vê GIRO de punho nem velocidade DENTRO do intervalo de
-exposição, e a exposição automática escolhida não fica gravada (`meta.json` só guarda o pedido).
-Gravar o valor de exposição que a câmera usou é o que tornaria isto medível.
+exposição, e a exposição automática escolhida não ficava gravada (`meta.json` só guarda o pedido).
+
+**Feito no mesmo dia: a gravação agora guarda a exposição REAL.** Sondado antes na MX Brio, porque
+pelo DirectShow muita câmera só devolve o valor pedido: esta devolve o valor real, `−6` (1/64 s)
+com a mesa iluminada, `−4` (1/16 s) com a lente coberta, e volta ao descobrir. É em degraus de
+log2, grosseiro, mas separa 1/64 de 1/32 s, que é o dobro do borrão. O `CameraStream` o lê na
+própria thread a cada 15 capturas (`exposicao_lida`), o gravador escreve um registro
+`{"t": "camera", "exposicao": ...}` só quando ele MUDA, e o `mede_leitura.py` publica a fração do
+tempo em cada valor. Todo leitor do `sessao.jsonl` já filtra por `t`, então o replay não muda.
+
+**Achado de brinde na sonda:** com a lente coberta a exposição foi a 1/16 s e a câmera caiu de
+~30 para **~20 quadros/s**. É o mecanismo "pouca luz derruba o fps" que 16/09 supunha, visto
+direto — e todo parâmetro do pipeline é contado em quadros.
 
 "Mexendo" não compara: hoje o movimento foi muito mais forte (p90 da agitação 1,00 contra 0,22) e a
 mão ficou parada 40% do tempo contra 73%. É isso que leva a contradição a 23,7% e o global a 8,22%.

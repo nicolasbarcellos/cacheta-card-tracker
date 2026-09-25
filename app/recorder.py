@@ -53,6 +53,7 @@ class SessionRecorder:
         self._fila: queue.Queue = queue.Queue(maxsize=30)
         self._thread = None
         self._fechado = False
+        self._exposicao = None         # a última gravada, para gravar só a MUDANÇA
 
         meta = {
             "inicio": time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -137,6 +138,20 @@ class SessionRecorder:
     def evento(self, i: int, evento: dict):
         """Compra ou descarte emitido pelo tracker, com o frame que o gerou."""
         self._escreve({"t": "evento", "i": i, **evento})
+
+    def exposicao(self, i: int, valor):
+        """A exposição que a câmera está usando, gravada só quando MUDA.
+
+        O `meta.json` guarda o PEDIDO (`cam_exposicao = None` = automática), e
+        o pedido não diz o que a automática escolheu — que é o que decide o
+        borrão com a mão mexendo. Faltou em 2026-09-25, ao comparar duas
+        gravações com a mesma luz. Um registro por mudança, e não um campo em
+        cada frame, porque o valor quase nunca muda e o replay não o lê.
+        """
+        if valor is None or valor == self._exposicao:
+            return
+        self._exposicao = valor
+        self._escreve({"t": "camera", "i": i, "exposicao": valor})
 
     def marca(self, i: int, texto: str):
         """Marcador manual — para anotar 'aqui errou' sem parar a partida."""

@@ -28,7 +28,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.leitura import imprime, mede           # noqa: E402
+from app.leitura import exposicoes, imprime, imprime_exposicoes, mede  # noqa: E402
 from app.replay import aplica_overrides, carrega  # noqa: E402
 
 
@@ -72,6 +72,9 @@ def main():
         print(f"config: {aplicados}")
     imprime(mede(registros, conf_alta=args.conf), args.gravacao.name,
             detalhar=not args.resumo)
+    # o que a exposicao AUTOMATICA escolheu: com a mao mexendo, e ela que
+    # decide o borrao (ver "A regravacao de 2026-09-25" no CLAUDE.md)
+    imprime_exposicoes(exposicoes(registros))
 
 
 if __name__ == "__main__":

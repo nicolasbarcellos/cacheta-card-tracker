@@ -393,6 +393,37 @@ def mede(registros: list[dict], conf_alta: float = 0.80,
     }
 
 
+def exposicoes(registros: list[dict]) -> dict[float, float]:
+    """Fração dos frames passada em cada EXPOSIÇÃO que a câmera usou.
+
+    Vem dos registros `camera` (gravados desde 2026-09-25, só quando o valor
+    muda): cada frame herda a última exposição registrada ANTES dele ou nele.
+    Gravação antiga não tem esses registros e devolve {} — ausência de dado,
+    não "exposição zero". Frame anterior ao primeiro registro não entra, pela
+    mesma razão.
+    """
+    atual = None
+    conta: Counter = Counter()
+    for rec in registros:
+        if rec["t"] == "camera":
+            atual = rec["exposicao"]
+        elif rec["t"] == "frame" and atual is not None:
+            conta[atual] += 1
+    total = sum(conta.values())
+    return {v: n / total for v, n in sorted(conta.items())} if total else {}
+
+
+def imprime_exposicoes(fracoes: dict[float, float]):
+    """Em log2(segundos), como o DirectShow a dá: -6 = 1/64 s."""
+    if not fracoes:
+        print("  EXPOSICAO: nao gravada (gravacao feita antes de 2026-09-25 16h,"
+              " quando o registro passou a existir)")
+        return
+    partes = [f"1/{2 ** -v:g}s {100 * f:.0f}%" if v < 0 else f"{v:g} {100 * f:.0f}%"
+              for v, f in fracoes.items()]
+    print("  EXPOSICAO real da camera: " + " | ".join(partes))
+
+
 def imprime(res: dict, rotulo: str = "", detalhar: bool = True):
     """Uma linha por número, sem caractere fora do cp1252.
 
