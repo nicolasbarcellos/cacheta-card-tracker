@@ -740,6 +740,13 @@ class FanReader:
                 "y": round(s["y"]),
                 "n": len(s["votes"]),
                 "misses": s["misses"],
+                # IDENTIDADE da vaga, estável enquanto ela viver. Quem mede
+                # precisa dela para acompanhar UMA vaga entre frames: por
+                # rótulo não dá, porque o rótulo repete (gêmeas dos dois
+                # baralhos) e troca de vaga quando a mão muda — foi o que
+                # sujou a análise controlada de 24/09, na gravação em que se
+                # jogou de verdade e as cartas entraram e saíram.
+                "seq": s["seq"],
                 # o rótulo JÁ ESTABELECIDO (o que a histerese sustenta), que
                 # não é necessariamente o primeiro de `top`: é ele que a mão
                 # exibida usa, e é por ele que `extrai_dificeis.py` sabe QUE

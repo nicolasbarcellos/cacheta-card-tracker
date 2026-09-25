@@ -731,3 +731,22 @@ def test_sem_calmo_max_o_leitor_e_sempre_calmo():
     r.update(_leque())
     r.update([])
     assert r.calmo
+
+
+def test_slots_debug_expoe_a_IDENTIDADE_da_vaga():
+    """A vaga tem `seq` estável, e é por ele que se acompanha UMA vaga.
+
+    Por rótulo não dá: gêmeas dos dois baralhos repetem o código, e quando a
+    mão muda o mesmo rótulo reaparece noutra vaga. Foi o que sujou a análise
+    controlada de 24/09 -- na gravação em que se jogou de verdade, com cartas
+    entrando e saindo, a atribuição por rótulo misturava vagas diferentes.
+    """
+    leitor = FanReader(match_dist=50, window=30, min_appear=1)
+    for _ in range(5):
+        leitor.update([d("AS", 100), d("KD", 300)])
+    antes = {s["seq"]: s["label"] for s in leitor.slots_debug()}
+    assert len(antes) == 2, "cada vaga tem seq próprio"
+    for _ in range(5):
+        leitor.update([d("AS", 104), d("KD", 296)])
+    depois = {s["seq"]: s["label"] for s in leitor.slots_debug()}
+    assert depois == antes, "a mesma vaga conserva o seq ao ser reencontrada"
