@@ -54,18 +54,26 @@ def carrega_verdade(gravacao: Path) -> dict | None:
         jogadas = json.loads(gab.read_text(encoding="utf-8"))["jogadas"]
     return {"mao_inicial": v["mao_inicial"].split(),
             "ordem_fixa": bool(v.get("ordem_fixa", False)),
+            "margem_antes": float(v.get("margem_antes", 0.0)),
             "jogadas": sorted(jogadas, key=lambda j: j["ts"])}
 
 
-def mao_em(ts: float, mao0: list[str], jogadas: list[dict]):
+def mao_em(ts: float, mao0: list[str], jogadas: list[dict],
+           margem_antes: float = 0.0):
     """(mão verdadeira no instante `ts`, está em transição?) — ou None.
 
     None quando `ts` passa da última jogada: dali em diante não há verdade.
+
+    `margem_antes` existe porque nem todo gabarito tem o instante FÍSICO da
+    jogada. Os de 17/09 e 25/09 foram cravados olhando o vídeo; os de 11/08 e
+    12/08 guardam o instante em que o sistema EMITIU o evento — que, com o
+    `lock_frames = 60` daquela época, vinha segundos DEPOIS de a carta mudar.
+    Sem a margem, esse trecho seria cobrado da tela como mão errada.
     """
     if jogadas and ts > jogadas[-1]["ts"]:
         return None
     mao = Counter(mao0)
-    transicao = False
+    transicao = any(0 <= j["ts"] - ts < margem_antes for j in jogadas)
     for j in jogadas:
         if j["ts"] > ts:
             break
@@ -97,7 +105,8 @@ def mede_verdade(registros: list[dict], verdade: dict) -> dict:
             continue
         dets = detections_do_registro(rec, config.min_confidence)
         process_frame(dets, tracker, leitor, trava, verbose=False)
-        estado = mao_em(rec.get("ts", 0.0), mao0, jogadas)
+        estado = mao_em(rec.get("ts", 0.0), mao0, jogadas,
+                        verdade.get("margem_antes", 0.0))
         if estado is None:
             continue
         real, em_transicao = estado

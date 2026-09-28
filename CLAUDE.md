@@ -1045,6 +1045,37 @@ só 96,7% → 97,0% de mão certa, bem menos do que a contradição sugeria (17,
 `verdade.json` e entra aqui. Custa ao usuário só dizer a mão; é o `--mao-fixa` do
 `extrai_gravacao.py` servindo também de gabarito de medição.
 
+### Os parâmetros da tela conferidos contra a VERDADE: todos no platô (2026-09-28)
+
+Todos os parâmetros da tela foram afinados contra a contradição, que cobra da tela o erro do
+modelo. Com a verdade ampliada para CINCO gravações, eles foram varridos de novo contra "a tela
+mostrou a mão certa?". As duas partidas longas (11/08 e 12/08) entraram com `verdade.json`: mão
+inicial conferida olhando o frame, jogadas do gabarito corrigido, e `margem_antes = 2 s` — os
+instantes desses gabaritos são os da EMISSÃO do evento, que vinha segundos depois da jogada com o
+`lock_frames = 60` da época (varrida de 0 a 8 s: pico em 2 s nas duas). A 11/08 foi relida com o
+modelo de hoje (`sessao-ab_2509.jsonl`); a 12/08 não tem mais vídeo e usa a releitura de 18/08.
+
+Mão certa na tela, com a config de hoje: **11/08 78,9% · 12/08 62,4% · 17/09 t1 36,5% · 17/09 t2
+97,0% · 25/09 66,9% — média 68,3%.** O número é baixo nas partidas jogadas, e é real: dois terços
+das cartas que faltam na tela NÃO aparecem no quadro naquele frame (12/08: 4.088 de 6.076) — carta
+coberta no leque de 10, o modelo cego. Conferido que não é gabarito errado: o J♣ que "falta" 16 s
+em 11/08 aparece em 9.063 frames da partida e nunca foi descartado.
+
+| parâmetro | valores | melhor média | e por que não muda |
+|---|---|---|---|
+| `lock_frames` | 10 / 15 / **20** / 30 / 40 | 30: 68,9 | 25/09 −1,7 e 17/09 t2 −0,8, e dobra o atraso; 10-15 pioram tudo |
+| `fan_expire` | 24 / **48** / 72 / 96 | 72: 69,1 | 11/08 −0,8; o ganho é quase todo da 17/09 t1 |
+| `fan_min_appear` | 5 / **10** / 15 | 5: 69,0 | 17/09 t2 (fora do treino) −0,3 |
+| `fan_exibe_misses` | 0 / 12 / **24** / 36 | 0: 68,8 | 25/09 −1,2, e a ordem da 17/09 t1 cai de 97,3 para 95,7 |
+| `fan_peso_min` | 0 / 0,4 / **0,6** / 0,8 | 0,8: 68,4 | empate |
+| `fan_win_margin` | 1,6 / **2,5** / 4 | 2,5 | os outros pioram |
+| `fan_calmo_max` | 0,05 / **0,08** / 0,12 / desligada | 0,05: 68,6 | 17/09 t2 −1,1; **desligar a trava custa 2,2 pontos** (t2: 97,0 → 89,6) |
+
+Nenhum valor melhora nas cinco, e todas as diferenças de média ficam abaixo de 1 ponto. **Os
+parâmetros estão no platô**: o ajuste antigo pela contradição não os deixou no lugar errado. E
+fica medido contra a verdade o que antes só se inferia: a trava de agitação vale 2,2 pontos de mão
+certa. O que falta à tela é detecção — o conserto é de modelo ou de mesa, não de parâmetro.
+
 ### A cobertura de 60% de 16/09 16:07 era o K♦ FANTASMA (2026-09-28)
 
 A pior cobertura do projeto, deixada em aberto em 17/09 ("não é da trava"). Dos 1.447 frames com

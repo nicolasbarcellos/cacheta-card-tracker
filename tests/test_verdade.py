@@ -47,6 +47,17 @@ def test_mao_em_segue_as_jogadas_e_para_na_ultima():
     assert mao_em(10_000.0, MAO, [])[0] == Counter(MAO)
 
 
+def test_margem_ANTES_da_jogada_para_gabarito_com_instante_de_emissao():
+    """11/08 e 12/08: o instante é o da EMISSÃO, que vem depois da jogada."""
+    jogadas = [{"tipo": "draw", "carta": "KS", "ts": 10.0},
+               {"tipo": "discard", "carta": "KS", "ts": 30.0}]
+    assert not mao_em(8.5, MAO, jogadas)[1]
+    assert mao_em(8.5, MAO, jogadas, margem_antes=2.0)[1]
+    assert not mao_em(7.5, MAO, jogadas, margem_antes=2.0)[1]
+    # a mão verdadeira em si não muda com a margem: só o frame sai da conta
+    assert mao_em(8.5, MAO, jogadas, margem_antes=2.0)[0] == Counter(MAO)
+
+
 def test_modelo_errando_UM_instante_nao_e_erro_da_tela():
     """O 5♦ lido como 3♦ por poucos frames: a tela segura a mão certa.
 
