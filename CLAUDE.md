@@ -948,6 +948,19 @@ acaba de cabeça para baixo). **A explicação que estava aqui — "a tela alter
 a nova" — estava ERRADA**, e o conserto está na seção "A carta RECOLOCADA voltava ao lugar antigo".
 Não é o empate de x de 26/08, e a histerese de ordem não tem o que fazer ali.
 
+**A MX Brio saiu do USB durante a sessão**, depois da gravação. O Windows passou a enxergar só a
+webcam interna, o índice 0 virou ela e a câmera passou a abrir em **1280x720 com o foco em -1**
+(pedindo 95). A gravação não foi afetada — o log dela diz `aberta 1920x1080 | foco FIXO 95` — mas
+**a falha é silenciosa** e valeria a sessão seguinte inteira. O `confere_enquadramento.py` avisa
+nos dois casos (foco que não pegou, resolução diferente da pedida), e pegou este na primeira
+execução. Lição operacional: **o pedido de foco NÃO é garantido**, e foco no automático vale 15,18%
+de perda contra 3,75%.
+
+`slots_debug` passou a expor o **`seq` da vaga** (a identidade), porque quem mede precisa
+acompanhar UMA vaga entre frames e por rótulo não dá — o rótulo repete (gêmeas dos dois baralhos) e
+troca de vaga quando a mão muda. Guardado por `test_slots_debug_expoe_a_IDENTIDADE_da_vaga`,
+conferido por mutação nas duas direções (ids colidindo e id que muda a cada frame).
+
 ### A carta RECOLOCADA voltava ao lugar antigo — era o `StableHand`, não a vaga (2026-09-28)
 
 Investigado em disco na gravação de 24/09, seguindo as vagas do 9♣ frame a frame. A vaga velha
@@ -961,43 +974,90 @@ ordem nova e a da trava a cada tranco.
 Conserto: a ordem que a tela adota da leitura viva (leque calmo, mesmo conjunto) passa a ser
 gravada em `_locked`. O CONJUNTO continua saindo só da trava; só a ordem muda.
 
-Nas 28 gravações, com o código de hoje:
+Primeira versão (commit `f67889d`): guardar com o leque `calmo`. Derrubou o vaivém somado das 28
+gravações de 200 para 80, e nesse commit eu registrei que o custo em ordem de 17/09 17:43 (1,1% →
+4,4%) era "a métrica errada". **Não era.** Medido no mesmo dia contra a mão VERDADEIRA (o
+instrumento da seção seguinte), a ordem certa caía de **99,7% para 95,2%** na tomada de 17/09 fora
+do treino. Eu tinha olhado UM exemplo e generalizado. Mecanismo: o 7♣ e o 3♦ trocados na leitura
+viva por só 3 frames, com agitação 0,061-0,074 (logo abaixo do `calmo_max` de 0,08), e essa ordem
+errada ficava segurada por ~50 frames da bagunça seguinte.
 
-| | antes | depois |
+**Versão final: guardar só com o leque FIRME** — agitação abaixo de `FRACAO_FIRME` × `calmo_max`
+(`FanReader.firme`). A tela continua acompanhando a leitura viva com o leque calmo, como antes; o
+que ficou mais exigente é só o que vira a ordem GUARDADA. Varrido nas 28 gravações e contra a
+verdade:
+
+| fração | vaivém (soma) | ordem errada c/ folga (soma) | ordem verdadeira 17/09 t1 / t2 |
+|---|---|---|---|
+| 0 (antes de hoje) | 200 | 17,1 | 99,1% / 99,7% |
+| 0,25 | 141 | 16,4 | 97,3% / 99,7% |
+| **0,4** | **121** | **15,8** | **97,3% / 99,7%** |
+| 0,6 | 110 | 20,6 | 97,3% / 99,7% |
+| 1,0 (`f67889d`) | 80 | 22,8 | 97,3% / 95,2% |
+
+0,4 é o fundo da ordem errada, deixa intacta a tomada fora do treino e ainda derruba o vaivém em
+40%; o caso que motivou tudo (24/09) fica em 3. Contradição, excesso, atraso, trocas e cobertura
+são idênticos em todas as frações. **O que sobra de custo** é a tomada 1 de 17/09 (99,1% → 97,3%),
+e o mecanismo ali é OUTRO: a detecção do J♠ cai dentro do raio da vaga do 7♣ colado, perde a
+disputa e é descartada, e a vaga do J♠ fica ~24 frames sem voto e com a posição parada — é essa
+posição parada que inverte a ordem, com o leque firme.
+
+**Três consertos para o resíduo, medidos e REPROVADOS no mesmo dia (não repita):**
+
+| ideia | resultado |
+|---|---|
+| vaga ausente (misses > K) não troca de lugar na ordem | vaivém 91-159 em qualquer K, ordem não melhora |
+| tirar da tela a vaga ausente quando a mesma carta já é vista em outra vaga | tudo igual (vaivém 82-83, ordem 22,3-25,1) |
+| detecção que perde a disputa tenta a 2ª vaga livre do MESMO rótulo | ordem igual ou pior, não resolve a tomada 1 |
+
+Guardado por `test_carta_RECOLOCADA_nao_volta_para_o_lugar_antigo` (falha com o código antigo) e
+`test_ordem_lida_com_o_leque_so_MEIO_parado_nao_e_guardada` (falha guardando com o `calmo`).
+
+### A tela contra a mão VERDADEIRA: `scripts/mede_verdade.py` (2026-09-28)
+
+O instrumento que faltava, e a seção anterior é a prova de que faltava: a métrica sem gabarito
+cobrava da tela o erro do modelo pela quarta vez, e desta vez eu descartei o sinal certo achando
+que era esse artefato. Núcleo testado em `app/verdade.py`; a mão verdadeira fica em
+`gravacoes/<data>/verdade.json` (`mao_inicial` da esquerda para a direita, `ordem_fixa`), mais as
+jogadas do `gabarito_corrigido.json` quando houver. Com jogadas, só o CONJUNTO é cobrado: o
+gabarito não diz onde o jogador encaixou a carta.
+
+Três gravações têm verdade hoje: as duas tomadas de 17/09 (mão ditada, ordem conferida a olho) e
+25/09 16:25 (gabarito tirado do vídeo). Só conta frame com metade da mão detectada, e os 1,5 s
+depois de cada jogada ficam fora (é atraso, que tem número próprio).
+
+| gravação | mão certa na tela | ordem certa (com a mão certa) |
 |---|---|---|
-| **vaivém, somado** | **200** | **80** |
-| 24/09 (a do relato) | 16 | **3** |
-| 18/09 14:43 · 12/08 · 26/08 13:24 | 33 · 30 · 24 | 19 · 8 · 5 |
-| contradição, excesso, atraso, trocas, cobertura | — | **idênticos em todas** |
+| 17/09 17:23 (tomada 1, ao vivo, `cards_backup_14`) | **36,5%** | 97,3% |
+| 17/09 17:43 (tomada 2, ao vivo) | 94,0% | 99,7% |
+| 17/09 17:43 relida com o `cards_backup_14` | 96,7% | 99,7%* |
+| 17/09 17:43 relida com o modelo de hoje (`ab-2509`) | **97,0%** | 99,7% |
+| 25/09 16:25 (ao vivo, `cards_backup_15`) | 66,9% | não cobrada |
 
-**O custo, e ele é real:** quando a leitura viva mostra uma ordem ERRADA com o leque calmo por uns
-frames, é ela que fica guardada e segurada durante a agitação seguinte. A ordem errada com folga
-sobe em duas gravações — **18/09 14:43 (2,8% → 5,9%)**, a do autofoco e a pior detecção do projeto,
-e **25/09 15:09 (0,3% → 1,5%)**, a mais agitada — e cai em cinco (26/08 13:24 0,8 → 0,4; 28/08
-1,8 → 1,6; 18/09 16:14 4,6 → 3,6; 24/09 0,5 → 0,2; 20/08 19:43 0,2 → 0,1). Em 17/09 17:43 ela
-"sobe" de 1,1% para 4,4%, mas ali **a métrica está errada**: a mão é conhecida (ditada pelo
-usuário) e a tela nova mostra exatamente ela; a "ordem real" do instrumento sai do quadro, onde o
-modelo troca o 5♦ com um 3♦.
+\* com a fração 1,0 do conserto de ordem eram 93,4% e 95,5% — foi assim que o custo apareceu.
 
-**Refinamento varrido e REPROVADO:** só guardar a ordem depois de N frames seguidos iguais. Com 3,
-vaivém 101; com 6, 123; com 10, 130 — e a ordem errada com folga só melhora na gravação em que a
-métrica está enganada. Fica a versão simples.
+**O que ela mostra que a contradição escondia:** na tomada 1, a tela esteve com a mão errada em
+dois terços do tempo, e a culpa é toda de CONJUNTO (5♦ e 4♣ faltando, 3♦ e 10♣ sobrando) — é o
+defeito do 5♦↔3♦ que o retreino de 17/09 atacou. E na tomada 2, fora do treino, o retreino rende
+só 96,7% → 97,0% de mão certa, bem menos do que a contradição sugeria (17,3% → 8,9%).
 
-Guardado por `test_carta_RECOLOCADA_nao_volta_para_o_lugar_antigo`, conferido por mutação (falha
-com o código antigo).
+**Para que serve daqui em diante:** toda gravação nova em que a mão for conhecida ganha um
+`verdade.json` e entra aqui. Custa ao usuário só dizer a mão; é o `--mao-fixa` do
+`extrai_gravacao.py` servindo também de gabarito de medição.
 
-**A MX Brio saiu do USB durante a sessão**, depois da gravação. O Windows passou a enxergar só a
-webcam interna, o índice 0 virou ela e a câmera passou a abrir em **1280x720 com o foco em -1**
-(pedindo 95). A gravação não foi afetada — o log dela diz `aberta 1920x1080 | foco FIXO 95` — mas
-**a falha é silenciosa** e valeria a sessão seguinte inteira. O `confere_enquadramento.py` avisa
-nos dois casos (foco que não pegou, resolução diferente da pedida), e pegou este na primeira
-execução. Lição operacional: **o pedido de foco NÃO é garantido**, e foco no automático vale 15,18%
-de perda contra 3,75%.
+### A cobertura de 60% de 16/09 16:07 era o K♦ FANTASMA (2026-09-28)
 
-`slots_debug` passou a expor o **`seq` da vaga** (a identidade), porque quem mede precisa
-acompanhar UMA vaga entre frames e por rótulo não dá — o rótulo repete (gêmeas dos dois baralhos) e
-troca de vaga quando a mão muda. Guardado por `test_slots_debug_expoe_a_IDENTIDADE_da_vaga`,
-conferido por mutação nas duas direções (ids colidindo e id que muda a cada frame).
+A pior cobertura do projeto, deixada em aberto em 17/09 ("não é da trava"). Dos 1.447 frames com
+carta no quadro e tela vazia, **1.297 têm UMA detecção só** — quase sempre o K♦ fantasma fraco da
+mesa (conf p50 0,46), que este arquivo já registrava em 16/09. A tela estava certa em ficar vazia;
+o denominador da cobertura contava o fantasma como "carta no quadro". O resto é a mão ENTRANDO no
+quadro agitada (agitação 1,0 caindo, leitura assentando em ~50 frames, trava em mais 20): atraso
+normal, não defeito.
+
+O `mede_leitura.py` passou a publicar também a **cobertura só com leque** (`MIN_LEQUE` = 2+
+detecções; 2 porque o leitor serve a pôquer). Em 16/09 16:07: **60,2% → 93,5%**. O número antigo
+continua publicado, pelo mesmo motivo do excesso com o leitor vivo: mudar o denominador em silêncio
+esconde. Guardado por `test_carta_AVULSA_fraca_nao_derruba_a_cobertura_com_leque`.
 
 ### A regravação de 2026-09-25: o ganho da LUZ não se repetiu
 
@@ -1151,6 +1211,7 @@ python -m app.main --gravar           # idem, gravando a partida para medir depo
 python scripts/demo_server.py         # partida simulada, sem webcam — para mexer no overlay/painel
 
 python scripts/mede_leitura.py gravacoes/<data>   # a NOTA: atraso, contradição, trocas
+python scripts/mede_verdade.py                    # a tela contra a mão VERDADEIRA (verdade.json)
 
 python -m pytest                      # suíte completa (rápida: só código puro)
 python -m pytest tests/test_hand_reader.py::test_carta_duplicada_e_FRACA_nao_entra_na_mao

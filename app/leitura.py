@@ -28,7 +28,10 @@ E mais três números que não são a nota mas explicam quase todo o resto:
   82% do tempo fora do quadro. Não passa — a gravação é que ficou rodando com
   ninguém na frente da câmera (numa delas a partida inteira cabe nos 3 primeiros
   minutos de 12,8). Contei essa leitura errada como achado neste arquivo antes
-  de olhar a linha do tempo;
+  de olhar a linha do tempo. **Publicada também só com LEQUE no quadro**
+  (`MIN_LEQUE` cartas ou mais): na partida de 16/09 16:07 a cobertura de
+  60,2% era 90% feita de frames com UMA detecção, quase sempre o K♦ fantasma
+  fraco da mesa — a tela estava certa em ficar vazia;
 - **atividade** — que fração da gravação teve carta na frente da câmera. É o
   denominador acima, publicado à parte justamente para não se confundir de novo
   com defeito do leitor;
@@ -85,6 +88,12 @@ def _percentil(valores: list[float], p: float) -> float:
 # daquele parâmetro no ATRASO, e uma âncora que andasse junto com ele mediria o
 # instrumento em vez do pipeline.
 TOLERANCIA_ANCORA = 16
+
+# Detecções a partir das quais o quadro tem um LEQUE, para a cobertura com
+# leque. 2 e não mais porque o leitor serve a pôquer (2 cartas); uma detecção
+# avulsa é quase sempre fantasma fraco — medido em 16/09 16:07, 1.297 dos 1.447
+# frames "com carta e tela vazia" tinham uma detecção só, o K♦ a ~0,46.
+MIN_LEQUE = 2
 
 
 def _ancora(historia: list[tuple[float, tuple]], chave: tuple,
@@ -160,6 +169,7 @@ def mede(registros: list[dict], conf_alta: float = 0.80,
     leitor, trava = build_pipeline()
 
     frames = com_imagem = com_mao = com_carta = com_carta_e_mao = 0
+    com_leque = com_leque_e_mao = 0
     duracao = 0.0
     atrasos: list[float] = []
     trocas = 0
@@ -215,6 +225,8 @@ def mede(registros: list[dict], conf_alta: float = 0.80,
         dets = detections_do_registro(rec, config.min_confidence)
         if dets:
             com_carta += 1
+        if len(dets) >= MIN_LEQUE:
+            com_leque += 1
         process_frame(dets, tracker, leitor, trava, verbose=False)
         leque = leitor.ultimo_leque
         # entra ANTES de medir o excesso: a carta que acabou de aparecer no
@@ -260,6 +272,8 @@ def mede(registros: list[dict], conf_alta: float = 0.80,
         # só some depois de `fan_expire`) fazia a cobertura passar de 100%
         if dets:
             com_carta_e_mao += 1
+        if len(dets) >= MIN_LEQUE:
+            com_leque_e_mao += 1
 
         # ORDEM: só faz sentido comparar quando a tela tem as MESMAS cartas do
         # quadro. Quando as cartas divergem, o que existe é erro de conjunto,
@@ -356,6 +370,9 @@ def mede(registros: list[dict], conf_alta: float = 0.80,
         # enquadramento. Foi o erro cometido em 2026-08-20.
         "com_carta_e_mao": com_carta_e_mao,
         "cobertura": com_carta_e_mao / com_carta if com_carta else 0.0,
+        "com_leque": com_leque,
+        "com_leque_e_mao": com_leque_e_mao,
+        "cobertura_leque": com_leque_e_mao / com_leque if com_leque else 0.0,
         "atividade": com_carta / frames if frames else 0.0,
         "atraso": {
             "n": len(atrasos),
@@ -471,6 +488,10 @@ def imprime(res: dict, rotulo: str = "", detalhar: bool = True):
     print(f"  COBERTURA: mao na tela em {res['com_carta_e_mao']}/"
           f"{res['com_carta']} frames COM CARTA no quadro "
           f"({100 * res['cobertura']:.1f}%)")
+    print(f"    so com LEQUE no quadro ({MIN_LEQUE}+ cartas): "
+          f"{res['com_leque_e_mao']}/{res['com_leque']} "
+          f"({100 * res['cobertura_leque']:.1f}%) -- a carta avulsa e quase "
+          f"sempre fantasma fraco da mesa")
     print(f"  ATIVIDADE: carta no quadro em {res['com_carta']}/{res['frames']} "
           f"frames da gravacao ({100 * res['atividade']:.1f}%)")
     if not detalhar:

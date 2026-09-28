@@ -97,7 +97,8 @@ def process_frame(detections_hand, tracker, hand_view, hand_lock,
     é o pipeline de verdade, e não uma reimplementação que pode divergir.
     """
     hand_view.update(hand_instances(detections_hand))
-    trocou = hand_lock.update(hand_view.cards, calmo=hand_view.calmo)
+    trocou = hand_lock.update(hand_view.cards, calmo=hand_view.calmo,
+                              firme=hand_view.firme)
     exibida = hand_lock.cards
     cards = [Card.from_label(c) for c in exibida]
 

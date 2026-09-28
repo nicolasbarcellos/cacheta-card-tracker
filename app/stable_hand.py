@@ -70,13 +70,17 @@ class StableHand:
                 usados[code] += 1
         return out
 
-    def update(self, live_cards, calmo: bool = True) -> bool:
+    def update(self, live_cards, calmo: bool = True,
+               firme: bool | None = None) -> bool:
         """`calmo=False` = há mão mexendo no leque (`FanReader.calmo`).
 
         Pedido do usuário em 2026-09-16: enquanto o leque está sendo arrumado,
         a tela mantém a mão que já mostrava. Agitado, a contagem de estabilidade
         ZERA — a mão nova precisa de `lock_frames` seguidos de leque parado — e
         a ordem exibida não acompanha a leitura viva (ver `cards`).
+
+        `firme` = leque parado o bastante para a ordem lida virar a ordem
+        GUARDADA (`FanReader.firme`); omitido, vale o `calmo`.
         """
         self._calmo = calmo
         # score por instância: 7H,7H viram (7H,0) e (7H,1)
@@ -124,14 +128,18 @@ class StableHand:
         # agitado ou com uma carta piscando devolvia a tela a ela. Medido em
         # 24/09 (o 9♣ tirado do meio e encaixado na ponta): a leitura viva já
         # estava certa e a vaga velha já tinha morrido, mas a tela voltava ao
-        # 9♣ no meio a cada tranco. Vaivém da partida 16 -> 3, e 200 -> 80
-        # somando as 28 gravações; o resto da nota fica idêntico. Custo: se a
-        # leitura viva mostrar uma ordem ERRADA calma por uns frames, é ela que
-        # fica guardada — ordem errada com folga subiu em 18/09 14:43 (2,8% ->
-        # 5,9%, a do autofoco) e 25/09 15:09 (0,3% -> 1,5%). Exigir a ordem
-        # firme por N frames antes de guardar foi varrido e não paga: com 6, o
-        # vaivém volta a 123 e a ordem só melhora onde a métrica está errada.
-        if (calmo and self._locked
+        # 9♣ no meio a cada tranco. Vaivém da partida 16 -> 3.
+        #
+        # Só guarda com o leque FIRME, mais parado do que o `calmo` pede
+        # (`FanReader.firme`). Guardando com o `calmo`, uma ordem errada lida
+        # em frames ainda meio mexidos ficava segurada pela bagunça seguinte, e
+        # a ordem certa contra a mão VERDADEIRA caía de 99,7% para 95,2% na
+        # tomada de 17/09. A varredura está em `hand_reader.FRACAO_FIRME`.
+        # Exigir a mesma ordem por N frames seguidos também foi varrido e não
+        # paga (N=6: o vaivém volta a 123 e a ordem não melhora).
+        if firme is None:
+            firme = calmo
+        if (firme and self._locked
                 and Counter(self._last_live) == Counter(self._locked)):
             self._locked = list(self._last_live)
         return False
@@ -157,9 +165,13 @@ class StableHand:
         transição), a última ordem boa é preservada — senão o overlay ficaria
         remexendo as cartas a cada frame borrado, que é o problema oposto.
 
-        "A última ordem boa" é literal: `update` guarda em `_locked` a ordem de
-        cada frame adotado. Até 2026-09-28 guardava só a do instante da trava.
+        "A última ordem boa" é literal: `update` guarda em `_locked` a ordem
+        lida com o leque firme. Até 2026-09-28 guardava só a do instante da
+        trava, e a carta recolocada voltava ao lugar antigo a cada tranco.
         """
+        if (self._calmo and self._locked
+                and Counter(self._last_live) == Counter(self._locked)):
+            return list(self._last_live)
         return list(self._locked)
 
     @property

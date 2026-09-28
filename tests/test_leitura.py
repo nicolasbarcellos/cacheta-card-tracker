@@ -64,6 +64,21 @@ def partida(blocos) -> list[dict]:
 ASSENTA = config.fan_min_appear + config.lock_frames + config.fan_window
 
 
+def test_carta_AVULSA_fraca_nao_derruba_a_cobertura_com_leque():
+    """O K♦ fantasma de 16/09: uma detecção sozinha, com a tela certa vazia.
+
+    A cobertura crua a cobra; a cobertura com leque, não.
+    """
+    registros = partida([(leque(["KD"]), 120)])
+    r = mede(registros)
+    assert r["com_carta"] == 120 and r["cobertura"] == 0.0
+    assert r["com_leque"] == 0
+    registros = partida([(leque(["2S", "6C", "9C", "9D"]), ASSENTA + 40)])
+    r = mede(registros)
+    assert r["com_leque"] == ASSENTA + 40
+    assert r["com_leque_e_mao"] >= 40
+
+
 def test_atraso_e_o_tempo_entre_ver_a_carta_e_ela_chegar_na_tela():
     """A mão aparece na tela alguns frames DEPOIS de a leitura viva mostrá-la.
 

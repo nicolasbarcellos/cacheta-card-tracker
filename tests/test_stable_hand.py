@@ -237,3 +237,19 @@ def test_carta_RECOLOCADA_nao_volta_para_o_lugar_antigo():
     assert sh.cards == nova
     sh.update([c for c in nova if c != "AS"])    # uma carta pisca
     assert sh.cards == nova
+
+
+def test_ordem_lida_com_o_leque_so_MEIO_parado_nao_e_guardada():
+    """Caso de 17/09: 7♣ e 3♦ trocados por 3 frames calmos, mas não firmes.
+
+    A tela acompanha a leitura enquanto ela dura; na bagunça seguinte volta à
+    última ordem lida com o leque FIRME, que é a certa.
+    """
+    sh = StableHand(lock_frames=12)
+    feed(sh, NINE, 20)
+    trocada = NINE[:]
+    trocada[0], trocada[1] = trocada[1], trocada[0]
+    sh.update(trocada, calmo=True, firme=False)
+    assert sh.cards == trocada
+    sh.update(trocada, calmo=False, firme=False)
+    assert sh.cards == NINE

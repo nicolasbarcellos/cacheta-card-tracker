@@ -7,6 +7,26 @@ from collections import Counter, deque
 # medição) e a mão exibida inchada (75%), com folga dos dois lados.
 FRACAO_OCLUSAO = 0.6
 
+# Fração de `calmo_max` abaixo da qual a ORDEM lida é guardada pelo StableHand
+# como a última ordem boa. Com o limite do `calmo` (fração 1) guardava-se a
+# ordem de frames ainda meio mexidos — medido contra a mão VERDADEIRA
+# (`app/verdade.py`), o 7♣ e o 3♦ trocados por 3 frames a agitação 0,06-0,07
+# ficavam segurados por ~50 frames de bagunça, e a ordem certa caía de 99,7%
+# para 95,2% na tomada de 17/09 fora do treino. Varrido nas 28 gravações:
+#
+#   fração  vaivém  ordem errada c/ folga (soma)  ordem verdadeira 17/09 t1 / t2
+#   0 (*)    200         17,1                          99,1% / 99,7%
+#   0,25     141         16,4                          97,3% / 99,7%
+#   0,4      121         15,8                          97,3% / 99,7%
+#   0,6      110         20,6                          97,3% / 99,7%
+#   1,0       80         22,8                          97,3% / 95,2%
+#
+#   (*) nunca guardar: o comportamento de antes de 2026-09-28
+#
+# 0,4 é o fundo da ordem errada, mantém a tomada fora do treino intacta e ainda
+# derruba o vaivém em 40%; o caso que motivou tudo (o 9♣ de 24/09) fica em 3.
+FRACAO_FIRME = 0.4
+
 
 class FanReader:
     """Lê o leque com votação temporal por posição ("vaga").
@@ -475,6 +495,15 @@ class FanReader:
     def calmo(self) -> bool:
         """Leque parado o bastante para a TELA aceitar uma mão nova."""
         return not self.calmo_max or self.agitacao < self.calmo_max
+
+    @property
+    def firme(self) -> bool:
+        """Leque parado o bastante para a ORDEM lida virar a ordem guardada.
+
+        Mais exigente que `calmo`, e é o que faz o conserto da carta recolocada
+        (`StableHand`, 2026-09-28) não custar ordem. Ver `FRACAO_FIRME`.
+        """
+        return not self.calmo_max or self.agitacao < FRACAO_FIRME * self.calmo_max
 
     def _rotulo_bruto(self, s) -> str | None:
         """O que a vaga é hoje: o rótulo exibido, ou o mais votado se não há."""
