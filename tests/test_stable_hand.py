@@ -219,3 +219,21 @@ def test_leque_agitado_nao_reordena_a_tela():
     assert sh.cards == NINE
     sh.update(embaralhada, calmo=True)
     assert sh.cards == embaralhada
+
+
+def test_carta_RECOLOCADA_nao_volta_para_o_lugar_antigo():
+    """Caso de 24/09: o 9♣ saiu do meio do leque e foi para a ponta.
+
+    Depois que a tela adota a ordem nova, um tranco (leque agitado) ou uma
+    carta piscando não pode devolvê-la à ordem do instante da trava — a tela
+    segura a última ordem BOA, que é a nova.
+    """
+    sh = StableHand(lock_frames=12)
+    feed(sh, NINE, 20)
+    nova = [c for c in NINE if c != "9C"] + ["9C"]
+    sh.update(nova, calmo=True)
+    assert sh.cards == nova
+    sh.update(nova, calmo=False)                 # tranco
+    assert sh.cards == nova
+    sh.update([c for c in nova if c != "AS"])    # uma carta pisca
+    assert sh.cards == nova

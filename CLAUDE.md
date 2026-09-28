@@ -944,10 +944,47 @@ célula casada diz que não é só tamanho.
 troca de par: são **6 posições mudando de uma vez**, em duas rajadas, e sempre o mesmo
 movimento — `8D 9D 10D [9C] 7D 7H 7S 3H 5D` ⟷ `8D 9D 10D 7D 7H 7S 3H 5D [9C]`, dez vezes em 5,5 s.
 No vídeo, o jogador está **tirando o 9♣ do meio do leque e encaixando-o na ponta direita** (e ele
-acaba de cabeça para baixo). A tela alterna entre a vaga velha, que leva `fan_expire` ~1,6 s para
-morrer, e a nova. É a família "carta tirada do leque e recolocada" que este arquivo registra como
-ABERTA desde 19/08 — **não** é o empate de x de 26/08, e a histerese de ordem não tem o que fazer
-ali (as duas vagas estão a centenas de px uma da outra).
+acaba de cabeça para baixo). **A explicação que estava aqui — "a tela alterna entre a vaga velha e
+a nova" — estava ERRADA**, e o conserto está na seção "A carta RECOLOCADA voltava ao lugar antigo".
+Não é o empate de x de 26/08, e a histerese de ordem não tem o que fazer ali.
+
+### A carta RECOLOCADA voltava ao lugar antigo — era o `StableHand`, não a vaga (2026-09-28)
+
+Investigado em disco na gravação de 24/09, seguindo as vagas do 9♣ frame a frame. A vaga velha
+NÃO fica viva: ela morre em ~1 s (i=3786 → 3811) e a leitura viva do `FanReader` passa a mostrar o
+9♣ na ponta, certo, e fica certa. Quem devolve a tela à ordem velha é o `StableHand.cards`: sempre
+que o leque ficava agitado (`calmo=False`) ou uma carta piscava (a leitura viva com conjunto
+diferente do travado), ele devolvia `_locked` — e `_locked` guardava a ordem **do instante da
+trava**, não a última ordem boa que o docstring prometia. Resultado: a tela ia e voltava entre a
+ordem nova e a da trava a cada tranco.
+
+Conserto: a ordem que a tela adota da leitura viva (leque calmo, mesmo conjunto) passa a ser
+gravada em `_locked`. O CONJUNTO continua saindo só da trava; só a ordem muda.
+
+Nas 28 gravações, com o código de hoje:
+
+| | antes | depois |
+|---|---|---|
+| **vaivém, somado** | **200** | **80** |
+| 24/09 (a do relato) | 16 | **3** |
+| 18/09 14:43 · 12/08 · 26/08 13:24 | 33 · 30 · 24 | 19 · 8 · 5 |
+| contradição, excesso, atraso, trocas, cobertura | — | **idênticos em todas** |
+
+**O custo, e ele é real:** quando a leitura viva mostra uma ordem ERRADA com o leque calmo por uns
+frames, é ela que fica guardada e segurada durante a agitação seguinte. A ordem errada com folga
+sobe em duas gravações — **18/09 14:43 (2,8% → 5,9%)**, a do autofoco e a pior detecção do projeto,
+e **25/09 15:09 (0,3% → 1,5%)**, a mais agitada — e cai em cinco (26/08 13:24 0,8 → 0,4; 28/08
+1,8 → 1,6; 18/09 16:14 4,6 → 3,6; 24/09 0,5 → 0,2; 20/08 19:43 0,2 → 0,1). Em 17/09 17:43 ela
+"sobe" de 1,1% para 4,4%, mas ali **a métrica está errada**: a mão é conhecida (ditada pelo
+usuário) e a tela nova mostra exatamente ela; a "ordem real" do instrumento sai do quadro, onde o
+modelo troca o 5♦ com um 3♦.
+
+**Refinamento varrido e REPROVADO:** só guardar a ordem depois de N frames seguidos iguais. Com 3,
+vaivém 101; com 6, 123; com 10, 130 — e a ordem errada com folga só melhora na gravação em que a
+métrica está enganada. Fica a versão simples.
+
+Guardado por `test_carta_RECOLOCADA_nao_volta_para_o_lugar_antigo`, conferido por mutação (falha
+com o código antigo).
 
 **A MX Brio saiu do USB durante a sessão**, depois da gravação. O Windows passou a enxergar só a
 webcam interna, o índice 0 virou ela e a câmera passou a abrir em **1280x720 com o foco em -1**
