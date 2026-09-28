@@ -1,0 +1,175 @@
+{
+ "revisados": 28,
+ "total_eventos": 28,
+ "jogadas": [
+  {
+   "tipo": "draw",
+   "carta": "3S",
+   "ts": 156.4,
+   "conferido_no_video": true
+  },
+  {
+   "tipo": "discard",
+   "carta": "9C",
+   "ts": 159.6,
+   "conferido_no_video": true
+  },
+  {
+   "tipo": "draw",
+   "carta": "QH",
+   "ts": 170.8,
+   "conferido_no_video": true
+  },
+  {
+   "tipo": "discard",
+   "carta": "5D",
+   "ts": 178.4,
+   "conferido_no_video": true
+  },
+  {
+   "tipo": "draw",
+   "carta": "3D",
+   "ts": 190.1,
+   "conferido_no_video": true
+  },
+  {
+   "tipo": "discard",
+   "carta": "QH",
+   "ts": 192.4,
+   "conferido_no_video": true
+  },
+  {
+   "tipo": "discard",
+   "carta": "8D",
+   "ts": 210.0,
+   "conferido_no_video": true
+  },
+  {
+   "tipo": "discard",
+   "carta": "9D",
+   "ts": 210.0,
+   "conferido_no_video": true
+  },
+  {
+   "tipo": "discard",
+   "carta": "10D",
+   "ts": 210.0,
+   "conferido_no_video": true
+  },
+  {
+   "tipo": "discard",
+   "carta": "7D",
+   "ts": 210.0,
+   "conferido_no_video": true
+  },
+  {
+   "tipo": "discard",
+   "carta": "7H",
+   "ts": 210.0,
+   "conferido_no_video": true
+  },
+  {
+   "tipo": "discard",
+   "carta": "7S",
+   "ts": 210.0,
+   "conferido_no_video": true
+  },
+  {
+   "tipo": "discard",
+   "carta": "3H",
+   "ts": 210.0,
+   "conferido_no_video": true
+  },
+  {
+   "tipo": "discard",
+   "carta": "3S",
+   "ts": 210.0,
+   "conferido_no_video": true
+  },
+  {
+   "tipo": "discard",
+   "carta": "3D",
+   "ts": 210.0,
+   "conferido_no_video": true
+  },
+  {
+   "tipo": "draw",
+   "carta": "9H",
+   "ts": 210.5,
+   "conferido_no_video": true
+  },
+  {
+   "tipo": "draw",
+   "carta": "2C",
+   "ts": 210.5,
+   "conferido_no_video": true
+  },
+  {
+   "tipo": "draw",
+   "carta": "6C",
+   "ts": 210.5,
+   "conferido_no_video": true
+  },
+  {
+   "tipo": "draw",
+   "carta": "4D",
+   "ts": 210.5,
+   "conferido_no_video": true
+  },
+  {
+   "tipo": "draw",
+   "carta": "AS",
+   "ts": 210.5,
+   "conferido_no_video": true
+  },
+  {
+   "tipo": "draw",
+   "carta": "JC",
+   "ts": 210.5,
+   "conferido_no_video": true
+  },
+  {
+   "tipo": "draw",
+   "carta": "3D",
+   "ts": 210.5,
+   "conferido_no_video": true
+  },
+  {
+   "tipo": "draw",
+   "carta": "5H",
+   "ts": 210.5,
+   "conferido_no_video": true
+  },
+  {
+   "tipo": "draw",
+   "carta": "AD",
+   "ts": 210.5,
+   "conferido_no_video": true
+  },
+  {
+   "tipo": "draw",
+   "carta": "AC",
+   "ts": 233.8,
+   "conferido_no_video": true
+  },
+  {
+   "tipo": "discard",
+   "carta": "JC",
+   "ts": 239.4,
+   "conferido_no_video": true
+  },
+  {
+   "tipo": "draw",
+   "carta": "8H",
+   "ts": 272.3,
+   "conferido_no_video": true
+  },
+  {
+   "tipo": "discard",
+   "carta": "5H",
+   "ts": 275.1,
+   "conferido_no_video": true
+  }
+ ],
+ "nota": "montado olhando o video em 2026-09-28 (recortes do leque por trecho); instantes cravados pela primeira/ultima deteccao firme da carta"
+}

@@ -1076,6 +1076,60 @@ parâmetros estão no platô**: o ajuste antigo pela contradição não os deixo
 fica medido contra a verdade o que antes só se inferia: a trava de agitação vale 2,2 pontos de mão
 certa. O que falta à tela é detecção — o conserto é de modelo ou de mesa, não de parâmetro.
 
+### Retreino com três gravações novas (`ab-2809`): REPROVADO, e elas viraram TESTE (2026-09-28)
+
+Repetido o método de 25/09 — gabarito montado olhando o vídeo, recorte do leque trecho a trecho,
+instantes cravados pela primeira/última detecção firme — em três gravações que nunca tinham entrado
+no treino:
+
+| gravação | o que é | frames | correções | rejeitados na auditoria |
+|---|---|---|---|---|
+| 24/09 18:26 | jogo, 2 mãos, 28 jogadas (a troca de mão inteira entre 201 e 219 s) | 275 | 34 | 3 |
+| 18/09 15:50 | mão FIXA de 9 (`10D KS 5S 3H 9C AS 7H 2D 4C`) | 120 | 83 | 0 |
+| 18/09 16:48 | mão FIXA de 10 (`KD 6H 4C 9C 7C QS QC QD 10D KC`) | 120 | 34 | 4 |
+
+As correções eram as confusões que se esperava achar: 7♥ lido 4♥ (38×) e 5♠ lido 3♠ (25×) na
+15:50; o A♣ lido 4♣ **por 7 s seguidos** em 24/09; 9♥ lido 2♥; o 5♦ lido 3♦. A auditoria por folha
+de contato reprovou sete frames com a mesma assinatura de sempre: glifo sob o dedo (2), e **ordem
+deslocada** (5) — o 3♦ e o 4♦ sendo trocados de lugar em 24/09, e o K♦ deitado da ponta esquerda de
+16:48 rotulado 10♦ nos primeiros 21 s. Duas armadilhas da folha de contato, para quem refizer: a
+caixa laranja sai QUEBRADA pelas linhas verdes (casar a cor exata BGR `(0,165,255)`, não um tom de
+laranja em HSV, que pega PELE), e a arte do K♣ também tem laranja.
+
+Treinado com a receita de 25/09 (12 épocas, 1280, batch 3, holdouts `20260811-211614`,
+`20260819-162252-dificeis`, `20260917-174349`), partindo do `cards.pt`. ~30 min nesta GPU — as
+estimativas de ~2 h deste arquivo estavam velhas.
+
+| | `cards.pt` (ab-2509) | `ab-2809` |
+|---|---|---|
+| **mão certa contra a verdade, 11/08** (relida) | **78,9%** | 77,9% |
+| **mão certa contra a verdade, 17/09 t2** (relida) | 97,0% | 97,0% |
+| perda de detecção, 28/08 / 26/08 14:12 | **5,02% / 2,32%** | 5,61% / 2,56% |
+| muito deitado, 28/08 / 26/08 | 12,22% / 11,74% | 12,35% / 12,82% |
+| contradição 25/09 15:09 / 15:47 / 26/08 / 28/08 | 17,4 / 27,1 / 10,2 / 9,7% | 19,2 / 27,3 / 9,3 / 10,4% |
+| classe: holdout 11/08 / `holdout-ranks` | 99,5% / 98,8% | 99,5% / 98,7% |
+| cartas inventadas | 0 | 0 |
+
+A mão certa empata numa e cai 1 ponto na outra, a perda piora pouco nas duas, a tela vai para os
+dois lados. **Reprovado; o `cards.pt` não mudou.** Pesos em `models/ab_2809.pt` (não publicado).
+
+**O que isto sugere, sem ter sido medido:** as três vitórias do dado real (18/08, 17/09, 25/09)
+atacaram um erro que o modelo ainda tinha NA CLASSE ALVO, com a verdade ditada ou tirada do vídeo.
+Aqui a maioria das correções já é de confusões que o `ab-2509` lê melhor que o modelo que gravou
+(as detecções gravadas são do modelo da época). O ganho de dado real parece estar no ERRO VIVO do
+modelo atual, não em volume.
+
+As três pastas ganharam `NAO_TREINAR`, com esse motivo — sem isso elas entrariam sozinhas no
+próximo treino, que deixaria de reproduzir o modelo publicado. E as três gravações ganharam
+`verdade.json`: **a tela contra a mão verdadeira passa a valer em 8 gravações**. Com as detecções
+gravadas AO VIVO (o modelo de cada época), a linha de base é:
+
+| 11/08 | 12/08 | 17/09 t1 | 17/09 t2 | 18/09 15:50 | 18/09 16:48 | 24/09 | 25/09 16:25 |
+|---|---|---|---|---|---|---|---|
+| 76,0% | 57,2% | 36,5% | 94,0% | 59,9% | 83,1% | 75,4% | 66,9% |
+
+Ordem certa, nas quatro de mão fixa: 97,3 · 99,7 · 99,6 · 100,0%.
+
 ### A cobertura de 60% de 16/09 16:07 era o K♦ FANTASMA (2026-09-28)
 
 A pior cobertura do projeto, deixada em aberto em 17/09 ("não é da trava"). Dos 1.447 frames com
