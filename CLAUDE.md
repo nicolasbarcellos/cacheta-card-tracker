@@ -1130,6 +1130,23 @@ gravadas AO VIVO (o modelo de cada época), a linha de base é:
 
 Ordem certa, nas quatro de mão fixa: 97,3 · 99,7 · 99,6 · 100,0%.
 
+**Relidas com o modelo de HOJE** (`sessao-ab_2509.jsonl`), as três gravações que ele nunca viu dão
+**76,1% · 84,7% · 83,8%** de mão certa (18/09 15:50 · 18/09 16:48 · 24/09), contra 59,9 · 83,1 ·
+75,4% do modelo da época. É o que explica o `ab-2809` não ganhar: boa parte dos erros daquelas
+gravações o modelo atual já não comete. E é a lista do que ele AINDA erra — o alvo para o próximo
+dado real, que tem de ser capturado mirando essas cartas, não uma partida genérica:
+
+| erro do modelo atual | frames (falta / sobra) | gravação |
+|---|---|---|
+| 6♥ lido 5♥ | 1.188 / 1.153 | 18/09 16:48 |
+| 10♦ lido 4♦ | 1.426 / 942 | 18/09 16:48 |
+| 10♦ lido Q♦ | 899 / 870 | 18/09 15:50 |
+| 7♥ lido 4♥ | 888 / 859 | 18/09 15:50 |
+| A♣ lido 4♣ | 184 / 184 | 24/09 |
+
+Cuidado ao usar as duas de 18/09 como teste de um retreino FUTURO: o `ab-2809` treinou nelas, mas
+ele não foi publicado, então para o `cards.pt` de hoje elas continuam fora do treino.
+
 ### A cobertura de 60% de 16/09 16:07 era o K♦ FANTASMA (2026-09-28)
 
 A pior cobertura do projeto, deixada em aberto em 17/09 ("não é da trava"). Dos 1.447 frames com
