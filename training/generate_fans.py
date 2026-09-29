@@ -11,7 +11,11 @@ v2 — corrige o sim-to-real gap da v1:
 
 Uso: python training/generate_fans.py [n_imagens]   (padrão: 2000)
 Saída: training/datasets/synthetic/{images,labels}/
+
+Para um A/B, `--saida` grava noutra pasta (o `finetune_local.py --sintetico` a
+lê), `--seed` fixa o sorteio e `--ranks-fracos` troca os ranks sobre-amostrados.
 """
+import argparse
 import random
 import sys
 from collections import Counter
@@ -23,7 +27,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from app.cards import RANKS, SUITS  # noqa: E402
 
-N_IMAGES = int(sys.argv[1]) if len(sys.argv) > 1 else 2000
+N_IMAGES = 2000
 CANVAS_W, CANVAS_H = 1280, 720
 TPL_W, TPL_H = 250, 350
 # fallback: índice (valor+naipe) do canto superior-esquerdo no molde 250x350.
@@ -430,6 +434,22 @@ def compose_fan(templates, bgs):
 
 
 def main():
+    global N_IMAGES, OUT, RANKS_FRACOS
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("n_imagens", nargs="?", type=int, default=N_IMAGES)
+    ap.add_argument("--saida", type=Path, default=OUT)
+    ap.add_argument("--seed", type=int, default=None)
+    ap.add_argument("--ranks-fracos", default=None, metavar="A,3,4",
+                    help=f"ranks sobre-amostrados (padrão: {sorted(RANKS_FRACOS)})")
+    args = ap.parse_args()
+    N_IMAGES, OUT = args.n_imagens, args.saida
+    if args.ranks_fracos:
+        RANKS_FRACOS = set(args.ranks_fracos.split(","))
+    if args.seed is not None:
+        random.seed(args.seed)
+        np.random.seed(args.seed)
+    print(f"ranks sobre-amostrados ({PESO_RANK_FRACO}x): {sorted(RANKS_FRACOS)}")
     templates = load_templates()
     if len(templates) < 40:
         sys.exit(f"só {len(templates)} moldes — rode capture_deck.py")

@@ -1147,6 +1147,32 @@ dado real, que tem de ser capturado mirando essas cartas, não uma partida gené
 Cuidado ao usar as duas de 18/09 como teste de um retreino FUTURO: o `ab-2809` treinou nelas, mas
 ele não foi publicado, então para o `cards.pt` de hoje elas continuam fora do treino.
 
+### Peso nos ranks do ERRO VIVO (6, 7, 10): REPROVADO, e o controle mediu o ruído (2026-09-29)
+
+Tentativa sem o usuário contra a lista acima (6♥→5♥, 10♦→4♦/Q♦, 7♥→4♥): o gerador passou a
+sobre-amostrar também 6, 7 e 10 (`generate_fans.py --ranks-fracos A,3,4,5,8,6,7,10`). A/B com
+**controle regenerado com a mesma semente e sem o peso** (`--seed 7`, `--saida`), mesma receita de
+25/09 e os mesmos holdouts, os dois partindo do `cards.pt`. Mão certa contra a verdade, as cinco
+gravações fora do treino, os três modelos lendo o MESMO vídeo:
+
+| | 11/08 | 17/09 t2 | 18/09 15:50 | 18/09 16:48 | 24/09 |
+|---|---|---|---|---|---|
+| `cards.pt` (ab-2509) | **78,9%** | 97,0% | 76,1% | 84,7% | 83,8% |
+| controle (`ab_ctrl2909`) | 78,2% | 97,0% | **81,3%** | **86,1%** | **84,0%** |
+| peso 6/7/10 (`ab_peso2909`) | 77,8% | 97,0% | 78,4% | 85,6% | 82,2% |
+
+O braço com peso perde para o CONTROLE em quatro e empata na quinta: **reprovado**. Nos erros
+alvo: 7♥→4♥ PIORA (794 → 1.228 frames), 10♦→Q♦ melhora (456 → 261), 6♥→5♥ e 10♦→4♦ ficam iguais.
+
+**O achado que vale mais: o CONTROLE mexe 5 pontos de mão certa numa gravação** (18/09 15:50,
+76,1 → 81,3%) sem mudança nenhuma de propósito — só sintético novo sorteado. É o piso de ruído do
+`mede_verdade`, e ele é bem maior que o ~1 ponto medido na perda de detecção. Nenhum candidato
+se compara ao `cards.pt`; compare com um controle da mesma rodada. O controle também não foi
+publicado: perde 0,7 em 11/08, e ganhar por ruído de rodada não é melhora.
+
+Pesos em `models/ab_ctrl2909.pt` e `models/ab_peso2909.pt` (não publicados); os dois conjuntos
+sintéticos em `training/datasets/syn-ctrl` e `syn-peso`.
+
 ### A cobertura de 60% de 16/09 16:07 era o K♦ FANTASMA (2026-09-28)
 
 A pior cobertura do projeto, deixada em aberto em 17/09 ("não é da trava"). Dos 1.447 frames com

@@ -113,7 +113,7 @@ ap.add_argument("--degrees", type=float, default=0.0,
 FRACAO_DEITADA = 0.30      # imagem "rica": 30%+ dos indices com larg/alt >= 1
 ap.add_argument("--peso-deitado", type=int, default=1, metavar="N",
                 help="repete N vezes a imagem sintetica rica em indice deitado "
-                     "(1 = desligado; 3 leva a fatia deitada de 18,6% a ~27%)")
+                     "(1 = desligado; 3 leva a fatia deitada de 18,6%% a ~27%%)")
 # CONTROLE do --peso-deitado: repete a MESMA QUANTIDADE de imagens, escolhidas
 # ao ACASO. Sem ele o braco muda duas coisas de uma vez -- a composicao de
 # rotacao E o tamanho do treino (que dilui a fatia de dado real de 38% para
@@ -123,6 +123,18 @@ ap.add_argument("--peso-deitado", type=int, default=1, metavar="N",
 ap.add_argument("--peso-aleatorio", action="store_true",
                 help="controle do --peso-deitado: repete a mesma quantidade de "
                      "imagens, sorteadas em vez de escolhidas por rotacao")
+ap.add_argument("--sintetico", type=Path, default=SYNTH, metavar="PASTA",
+                help="dataset sintético (padrão: datasets/synthetic; num A/B, "
+                     "cada braço lê o seu, gerado com generate_fans.py --saida)")
+# ARQUITETURA. Por padrao o treino parte do `cards.pt` (YOLOv8n, 3,0 M), que e
+# ajuste fino. `--base yolo11s.pt` parte de OUTRA arquitetura (pesos COCO, que o
+# Ultralytics baixa sozinho) -- ai nao ha backbone ajustado a preservar, entao
+# o `--freeze` vai a 0 e sao precisas mais epocas. As classes continuam as do
+# `cards.pt`, pelo data.yaml.
+ap.add_argument("--base", default=None, metavar="PESOS",
+                help="pesos de partida (padrao: models/cards.pt)")
+ap.add_argument("--freeze", type=int, default=10,
+                help="camadas congeladas (padrao 10; 0 ao trocar de arquitetura)")
 ap.add_argument("--workers", type=int, default=2,
                 help="processos do dataloader (padrao 2: 8 quebra no Windows)")
 ap.add_argument("--nome", default="finetune-fans",
@@ -206,9 +218,9 @@ def main():
     TRAINSET = (TRAINSET_BASE if args.nome == "finetune-fans"
                 else TRAINSET_BASE.with_name(f"fans-split-{args.nome}"))
 
-    synthetic = collect(SYNTH)
+    synthetic = collect(args.sintetico)
     real = collect(LOCAL, needs_review=True)
-    print(f"sintético: {len(synthetic)} imagens ({SYNTH})")
+    print(f"sintético: {len(synthetic)} imagens ({args.sintetico})")
     print(f"real:      {len(real)} imagens revisadas ({LOCAL})")
     # partidas gravadas: mesma regra de revisão (apagar a imagem de review/ é
     # como se rejeita um rótulo), e o holdout fica de fora para sobrar partida
@@ -310,15 +322,16 @@ def main():
         shutil.copy(MODEL, backup)
         print(f"backup: {backup}")
 
-    model = YOLO(str(MODEL))
-    print(f"treino: epochs={EPOCHS} imgsz={IMGSZ} batch={BATCH} "
+    model = YOLO(args.base or str(MODEL))
+    print(f"treino: base={args.base or MODEL} freeze={args.freeze} "
+          f"epochs={EPOCHS} imgsz={IMGSZ} batch={BATCH} "
           f"fliplr={args.fliplr} degrees={args.degrees}")
     model.train(
         data=str(TRAINSET / "data.yaml"),
         epochs=EPOCHS,    # menos épocas: evita fixar demais no sintético
         imgsz=IMGSZ,      # índices de canto são pequenos: resolução alta
         lr0=0.0003,       # lr baixo: ajuste fino
-        freeze=10,        # congela o "miolo" (backbone) — não esquece o real
+        freeze=args.freeze,  # congela o "miolo" (backbone) — não esquece o real
         batch=BATCH,      # imgsz maior consome mais VRAM
         mosaic=0.0,       # mosaico descaracteriza o layout de leque
         scale=0.2, translate=0.05,  # augment moderado
