@@ -1173,6 +1173,29 @@ publicado: perde 0,7 em 11/08, e ganhar por ruído de rodada não é melhora.
 Pesos em `models/ab_ctrl2909.pt` e `models/ab_peso2909.pt` (não publicados); os dois conjuntos
 sintéticos em `training/datasets/syn-ctrl` e `syn-peso`.
 
+### Arquitetura maior (`yolo11s`): REPROVADO — conserta os erros alvo e cria outros piores (2026-09-30)
+
+A última porta que não dependia do usuário. `yolo11s` (9,4 M) partindo do COCO, `--freeze 0`, 40
+épocas, 1280, batch 3, o mesmo dado e os mesmos holdouts do controle `ab_ctrl2909`
+(`finetune_local.py --base yolo11s.pt`). ~11 min/época nesta GPU, 3,5 de 4 GB de VRAM; caiu uma
+vez por falta de RAM do sistema e foi retomado com `resume=True` e `workers=1`, sem perda.
+
+| mão certa | 11/08 | 17/09 t2 | 18/09 15:50 | 18/09 16:48 | 24/09 |
+|---|---|---|---|---|---|
+| controle (v8n) | **78,2%** | 97,0% | 81,3% | **86,1%** | **84,0%** |
+| `yolo11s` | 60,7% | 97,0% | **91,0%** | 46,9% | 69,0% |
+
+**O achado é que os erros TROCARAM de lugar.** Os quatro erros alvo quase somem — em 18/09 15:50
+o 7♥→4♥ vai de 794 frames a 0 e o 10♦→Q♦ de 456 a 29; em 16:48 o 6♥→5♥ vai de 1.169 a 30 e o
+10♦→4♦ some. Mas surgem erros novos e grandes: **K♣ lido A♣ em 5.778 frames** (16:48), J♣ lido J♠
+(11/08), 7♠ lido 7♣ (24/09). São exatamente as famílias que o v8n aprendeu com o dado real desde
+julho (o K♠→A♠ de 12/08, a troca de naipe na mesma cor) — o fine-tuning acumulado carrega
+correções que ~800 frames reais não bastam para ensinar a um modelo que começa do COCO.
+
+**Não publicado.** Pesos em `models/ab_11s2909.pt`. Se um dia houver mais dado real, o 11s é o
+candidato a revisitar: a capacidade a mais resolve a confusão de glifo que nenhuma mudança de dado
+resolveu no v8n.
+
 ### A cobertura de 60% de 16/09 16:07 era o K♦ FANTASMA (2026-09-28)
 
 A pior cobertura do projeto, deixada em aberto em 17/09 ("não é da trava"). Dos 1.447 frames com
