@@ -1173,6 +1173,46 @@ publicado: perde 0,7 em 11/08, e ganhar por ruído de rodada não é melhora.
 Pesos em `models/ab_ctrl2909.pt` e `models/ab_peso2909.pt` (não publicados); os dois conjuntos
 sintéticos em `training/datasets/syn-ctrl` e `syn-peso`.
 
+### Retreino de 2026-09-30 (`ab-3009`): PUBLICADO, e o ganho é quase todo de rodada
+
+**O modelo em produção mudou: `cards.pt` é o `ab-3009`.** Rollback:
+`copy models\cards_backup_16.pt models\cards.pt`.
+
+Captura curta com o usuário mirando o erro vivo do modelo: as 4 cartas que ele errava (6♥, 10♦,
+7♥, A♣) mais as 5 com que as confundia, **9 cartas**, em duas ordens de ~2,5 min:
+
+- `20260930-160758` (tomada 1, TREINO): `6H 5H 10D 4D QD 7H 4H AC 4C`, pares lado a lado;
+- `20260930-161359` (tomada 2, TESTE): `6H 4D 5H AC 4H QD 4C 7H 10D`, pares separados.
+
+Preparo feito inteiro antes de gravar, e ele pegou dois defeitos: `afina_foco.py` achou o pico em
+75 com o leque longe, e o `confere_enquadramento.py` reprovou a distância (índice a 89 px). Com o
+leque 15-20% mais perto o índice foi a 110 px e o pico do foco voltou a 90-105 — o `cam_foco = 95`
+ficou. Os dois têm `verdade.json`: **a tela contra a mão verdadeira vale agora em 10 gravações.**
+
+**Primeiro achado, e ele vale mais que o retreino: com o preparo certo, os erros-alvo quase não
+aparecem.** O modelo de antes deu mão certa em **99,3%** da tomada 1 e 93,7% da tomada 2 (ao
+vivo), e o `extrai_gravacao --mao-fixa` achou só **3 correções em 1.080 rótulos** (`3H->5H` 2,
+`2D->QD` 1, conferidas na folha). O 6♥→5♥, o 10♦→4♦/Q♦ e o 7♥→4♥ de 18/09 eram da CONDIÇÃO
+daquele dia, não defeito fixo do modelo. O erro que sobra na tomada 2 é `4D` lido `9D`/`AD`.
+
+Mão certa, os três modelos lendo o MESMO vídeo (`--redetectar`), receita e holdouts de 25/09:
+
+| | tomada 2 | 11/08 | 17/09 t2 | 18/09 15:50 | 18/09 16:48 | 24/09 |
+|---|---|---|---|---|---|---|
+| `cards_backup_16` (ab-2509) | 95,3% | 78,9% | 97,0% | 76,1% | 84,7% | 83,8% |
+| controle `ab_ctrl2909` | **97,7%** | 78,2% | 97,0% | **81,3%** | 86,1% | **84,0%** |
+| **`ab-3009` (controle + tomada 1)** | 96,0% | **79,2%** | 97,0% | 79,9% | **86,5%** | 83,8% |
+
+Contra o modelo anterior, o `ab-3009` ganha em quatro e empata em duas — é o único candidato do
+projeto que **não perde em nenhuma** das gravações com verdade, e por isso foi publicado. Classe
+99,5% → 99,5% no holdout de 11/08, 98,8% → 98,9% no `holdout-ranks` (naipe na mesma cor 9 → 8),
+cartas inventadas 0 → 0.
+
+**Ressalva honesta:** contra o CONTROLE da mesma rodada ele ganha em duas e perde em duas. Ou seja,
+os 120 frames da tomada 1 não mexem nada mensurável — quase não traziam erro para ensinar — e o
+ganho sobre o modelo anterior é da RODADA (sintético novo), da ordem do ruído de 5 pontos medido em
+29/09. O controle não foi publicado porque perde 0,7 em 11/08; o `ab-3009` não perde em nenhuma.
+
 ### Arquitetura maior (`yolo11s`): REPROVADO — conserta os erros alvo e cria outros piores (2026-09-30)
 
 A última porta que não dependia do usuário. `yolo11s` (9,4 M) partindo do COCO, `--freeze 0`, 40
